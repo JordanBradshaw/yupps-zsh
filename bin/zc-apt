@@ -1,0 +1,21 @@
+#!/bin/sh
+# apt wrapper behind the `apt` alias in conf.d/30-aliases.zsh. It is a script,
+# not a function, so `sudo apt ...` runs it too.
+#
+# With nala installed, subcommands nala has go to nala, which downloads in
+# parallel. Everything else runs apt with a few extra options.
+# Bypass with `command apt` or `/usr/bin/apt`.
+
+if command -v nala >/dev/null 2>&1; then
+    case $1 in
+        full-upgrade|dist-upgrade)
+            shift
+            exec nala upgrade "$@"
+            ;;
+        install|remove|purge|update|upgrade|autoremove|autopurge|search|list|show|history|clean|fetch)
+            exec nala "$@"
+            ;;
+    esac
+fi
+
+exec apt -o Acquire::Retries=5 -o APT::Get::Show-Versions=true "$@"
