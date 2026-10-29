@@ -46,6 +46,34 @@ test_ssh_hosts_missing_config() {
 }
 
 # ---------------------------------------------------------------------------
+# Docker containers
+# ---------------------------------------------------------------------------
+
+# _describe stand-in: put the candidate array (NAME of 4th argument) in $reply.
+capture_describe() {
+  function _describe() { reply=("${(@P)4}") }
+}
+
+test_docker_containers_names_with_image() {
+  stub_cmd docker 'echo "$@" > '$SANDBOX'/docker.log; printf "web:nginx:1.27\ndb:postgres\n"'
+  load_conf
+  capture_describe
+  _zc_docker_containers
+  assert_eq "${(j:,:)reply}" "web:nginx:1.27,db:postgres"
+  assert_eq "$(<$SANDBOX/docker.log)" "ps --format {{.Names}}:{{.Image}}"
+}
+
+test_docker_containers_daemon_down() {
+  stub_cmd docker 'echo "Cannot connect to the Docker daemon" >&2; exit 1'
+  load_conf
+  capture_describe
+  local err=$(_zc_docker_containers 2>&1)
+  _zc_docker_containers 2>/dev/null
+  assert_eq "${#reply}" 0
+  assert_eq "$err" ""
+}
+
+# ---------------------------------------------------------------------------
 # Generated completions
 # ---------------------------------------------------------------------------
 
@@ -149,6 +177,7 @@ test_setup_registers_repo_functions() {
   assert_eq "$_comps[ineachdir]" "_precommand" ineachdir
   assert_eq "$_comps[whichall]" "$_comps[whence]" whichall
   assert_eq "$_comps[zhelp]" "_zhelp" zhelp
+  assert_eq "$_comps[run-in-container]" "_zc_run_in_container" run-in-container
 }
 
 test_setup_tree_prefers_eza_completion() {

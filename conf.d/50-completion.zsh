@@ -88,6 +88,17 @@ function _zc_units() {
   _describe -t units unit units
 }
 
+# Running Docker containers, described by image.
+function _zc_docker_containers() {
+  local -a containers
+  containers=(${(f)"$(command docker ps --format '{{.Names}}:{{.Image}}' 2>/dev/null)"})
+  _describe -t containers container containers
+}
+
+function _zc_run_in_container() {
+  _arguments '1:container:_zc_docker_containers' '*:::command:_normal'
+}
+
 function _zc_completion_setup() {
   emulate -L zsh
   # compinit hasn't run yet; try again next prompt.
@@ -100,6 +111,7 @@ function _zc_completion_setup() {
   compdef _zc_pathremove pathremove
   compdef _zc_units jfollow
   compdef _zhelp zhelp
+  compdef _zc_run_in_container run-in-container
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir
