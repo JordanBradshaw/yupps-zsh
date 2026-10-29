@@ -240,6 +240,93 @@ test_setup_runs_once() {
 }
 
 # ---------------------------------------------------------------------------
+# argcomplete tools (ros2): may appear on PATH mid-session via ROS setup.zsh
+# ---------------------------------------------------------------------------
+
+# argcomplete >= 3 prints a script that calls compdef itself under zsh.
+stub_argcomplete() {
+  stub_cmd ${1:-register-python-argcomplete} "echo \"\$@\" >> $SANDBOX/reg
+echo '_python_argcomplete() { return 0 }'
+echo \"compdef _python_argcomplete \$1\""
+}
+
+test_argcomplete_registers_ros2() {
+  stub_cmd ros2
+  stub_argcomplete
+  load_conf
+  _zc_argcomplete_setup
+  assert_eq "$_comps[ros2]" "_python_argcomplete"
+  assert_eq "$(<$SANDBOX/reg)" "ros2" "register args"
+}
+
+test_argcomplete_waits_for_ros2_on_path() {
+  stub_argcomplete
+  load_conf
+  _zc_argcomplete_setup
+  (( ${precmd_functions[(I)_zc_argcomplete_setup]:-0} )) || fail "hook removed early"
+  # Like sourcing /opt/ros/*/setup.zsh
+  mkdir $SANDBOX/ros
+  print '#!/bin/sh' >| $SANDBOX/ros/ros2
+  chmod +x $SANDBOX/ros/ros2
+  path=($SANDBOX/ros $path)
+  _zc_argcomplete_setup
+  assert_eq "$_comps[ros2]" "_python_argcomplete"
+  (( ! ${precmd_functions[(I)_zc_argcomplete_setup]:-0} )) || fail "hook not removed"
+}
+
+test_argcomplete_keeps_ros_setup_completion() {
+  stub_cmd ros2
+  stub_argcomplete
+  load_conf
+  compdef _ros_own ros2
+  _zc_argcomplete_setup
+  assert_eq "$_comps[ros2]" "_ros_own"
+  [[ ! -e $SANDBOX/reg ]] || fail "register-python-argcomplete ran"
+  (( ! ${precmd_functions[(I)_zc_argcomplete_setup]:-0} )) || fail "hook not removed"
+}
+
+test_argcomplete_uses_register3_name() {
+  stub_cmd ros2
+  stub_argcomplete register-python-argcomplete3
+  path=($STUB_BIN)  # hide the host's register-python-argcomplete
+  load_conf
+  _zc_argcomplete_setup
+  assert_eq "$_comps[ros2]" "_python_argcomplete"
+}
+
+# argcomplete < 3 prints a bash-only script.
+test_argcomplete_bash_script_uses_bashcompinit() {
+  stub_cmd ros2
+  stub_cmd register-python-argcomplete "cat <<'EOF'
+_python_argcomplete() { return 0 }
+complete -o nospace -o default -F _python_argcomplete ros2
+EOF"
+  load_conf
+  _zc_argcomplete_setup 2>$SANDBOX/err
+  assert_eq "$(<$SANDBOX/err)" "" stderr
+  assert_eq "$_comps[ros2]" "_bash_complete -o nospace -o default -F _python_argcomplete"
+}
+
+test_argcomplete_without_register_tool() {
+  stub_cmd ros2
+  path=($STUB_BIN)
+  load_conf
+  _zc_argcomplete_setup 2>$SANDBOX/err
+  assert_eq "$(<$SANDBOX/err)" "" stderr
+  assert_eq "${+_comps[ros2]}" 0
+  (( ! ${precmd_functions[(I)_zc_argcomplete_setup]:-0} )) || fail "hook not removed"
+}
+
+test_argcomplete_waits_for_compinit() {
+  stub_cmd ros2
+  stub_argcomplete
+  source $CONF
+  _zc_argcomplete_setup
+  [[ ! -e $SANDBOX/reg ]] || fail "ran before compinit"
+  (( ${precmd_functions[(I)_zc_argcomplete_setup]:-0} )) || fail "hook removed early"
+}
+
+# ---------------------------------------------------------------------------
 # zstyles are configuration: they live in the dotfiles (zstyles.d), not here.
 # ---------------------------------------------------------------------------
 

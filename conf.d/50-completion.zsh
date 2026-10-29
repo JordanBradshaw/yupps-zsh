@@ -145,3 +145,24 @@ function _zc_completion_setup() {
   done
 }
 add-zsh-hook precmd _zc_completion_setup
+
+# argcomplete tools (ros2) usually reach PATH mid-session, when a ROS
+# setup.zsh is sourced, so check every prompt until one shows up.
+function _zc_argcomplete_setup() {
+  emulate -L zsh
+  (( ${+_comps} && ${+commands[ros2]} )) || return 0
+  add-zsh-hook -d precmd _zc_argcomplete_setup
+
+  # ROS's setup.zsh registers its own completion.
+  (( ${+_comps[ros2]} )) && return 0
+  local reg=${commands[register-python-argcomplete]:-$commands[register-python-argcomplete3]}
+  [[ -n $reg ]] || return 0
+  local script
+  script=$($reg ros2 2>/dev/null) || return 0
+  # argcomplete < 3 prints a bash-only script.
+  if [[ $script != *compdef* ]]; then
+    autoload -Uz bashcompinit && bashcompinit
+  fi
+  eval "$script"
+}
+add-zsh-hook precmd _zc_argcomplete_setup
