@@ -166,12 +166,85 @@ test_apt_no_alias_without_apt() {
 
 test_zc_apt_uses_nala() {
   stub_echo apt nala
-  assert_eq "$(PATH=$STUB_BIN $ZC_APT install -y foo)" "nala install -y foo"
+  assert_eq "$(PATH=$STUB_BIN $ZC_APT install -y foo)" "nala install --no-autoremove -y foo"
 }
 
-test_zc_apt_full_upgrade_maps_to_nala_upgrade() {
+# nala only where it can do exactly what apt does: autoremove off (apt never
+# autoremoves), no list refresh before full-upgrade.
+test_zc_apt_nala_mappings() {
   stub_echo apt nala
-  assert_eq "$(PATH=$STUB_BIN $ZC_APT full-upgrade)" "nala upgrade"
+  local -A want=(
+    'update'                        'nala update'
+    'install foo bar'               'nala install --no-autoremove foo bar'
+    'remove foo'                    'nala remove --no-autoremove foo'
+    'purge foo'                     'nala purge --no-autoremove foo'
+    'autoremove'                    'nala autoremove'
+    'autopurge -y'                  'nala autopurge -y'
+    'full-upgrade'                  'nala full-upgrade --no-update --no-autoremove'
+    'dist-upgrade -y'               'nala full-upgrade --no-update --no-autoremove -y'
+    'history'                       'nala history'
+    'fetch'                         'nala fetch'
+  )
+  local args
+  for args in ${(k)want}; do
+    assert_eq "$(PATH=$STUB_BIN $ZC_APT ${=args})" "$want[$args]" "apt $args"
+  done
+}
+
+# Options both take the same way stay on nala, values included.
+test_zc_apt_shared_options_stay_on_nala() {
+  stub_echo apt nala
+  local -A want=(
+    'install -t bookworm-backports foo'      'nala install --no-autoremove -t bookworm-backports foo'
+    'install --target-release=testing foo'   'nala install --no-autoremove --target-release=testing foo'
+    'install -o Dpkg::Use-Pty=0 -d foo'      'nala install --no-autoremove -o Dpkg::Use-Pty=0 -d foo'
+    'install --no-install-recommends foo'    'nala install --no-autoremove --no-install-recommends foo'
+    'install https://example.org/foo.deb'    'nala install --no-autoremove https://example.org/foo.deb'
+    'remove --purge --assume-yes foo'        'nala remove --no-autoremove --purge --assume-yes foo'
+    'update --option Acquire::Retries=3'     'nala update --option Acquire::Retries=3'
+    'full-upgrade --download-only'           'nala full-upgrade --no-update --no-autoremove --download-only'
+  )
+  local args
+  for args in ${(k)want}; do
+    assert_eq "$(PATH=$STUB_BIN $ZC_APT ${=args})" "$want[$args]" "apt $args"
+  done
+}
+
+# Anything nala lacks, or takes differently, runs apt.
+test_zc_apt_falls_back_to_apt() {
+  stub_echo apt nala
+  local args
+  for args in \
+    'upgrade' 'search foo' 'search --names-only foo' 'list --installed' 'show foo' \
+    'clean' 'policy foo' 'install -f' 'install --reinstall foo' 'install -s foo' \
+    'install -yq foo' 'install ./foo.deb' 'install /tmp/foo.deb' 'install foo/bookworm-backports' \
+    'install -o' 'remove -t testing foo' 'full-upgrade -t testing' 'autoremove -t testing' \
+    'update -y'; do
+    assert_eq "$(PATH=$STUB_BIN $ZC_APT ${=args})" "apt $APT_OPTS $args" "apt $args"
+  done
+}
+
+test_zc_apt_no_arguments_runs_apt() {
+  stub_echo apt nala
+  assert_eq "$(PATH=$STUB_BIN $ZC_APT)" "apt $APT_OPTS"
+}
+
+# The installed nala accepts every command line zc-apt builds. Not as root:
+# nala would act on it. As a normal user nala stops at "needs root" after
+# parsing, and rejects unknown options before that.
+test_zc_apt_real_nala_accepts_its_command_lines() {
+  [[ -x /usr/bin/nala && $EUID -ne 0 ]] || return 0
+  stub_echo apt
+  local args out
+  for args in \
+    'update -o A=b --option A=b' \
+    'install -y --assume-yes -d --download-only -t x --target-release=x --install-recommends --no-install-recommends --purge -o A=b zz' \
+    'remove -y -d --purge -o A=b zz' 'purge -y zz' \
+    'autoremove -y -d --purge -o A=b' 'autopurge -y' \
+    'full-upgrade -y -d --purge -o A=b' 'dist-upgrade -y'; do
+    out=$(PATH=$STUB_BIN:/usr/bin $ZC_APT ${=args} </dev/null 2>&1)
+    [[ $out == *'needs root'* ]] || fail "nala rejected apt $args: ${(j: :)${(f)out}[1,6]}"
+  done
 }
 
 test_zc_apt_unsupported_subcommand_uses_apt() {

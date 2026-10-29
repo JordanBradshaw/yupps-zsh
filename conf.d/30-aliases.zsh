@@ -132,8 +132,8 @@ if (( ${+commands[eza]} || ${+commands[lsd]} )); then
 
     # --git costs ~0.01 s per listing; `ls --no-git` turns it off once.
     typeset -ga _zc_eza_ls=(
-        eza --long --group-directories-first --icons=always --color=always
-        --git --smart-group --time-style=long-iso
+        eza --group-directories-first --icons=always --color=always
+        --git --smart-group --time-style=long-iso --octal-permissions
     )
 
     function ls() {
@@ -309,7 +309,8 @@ fi
 
 
 # -------------------------------------------------------------------
-# apt -> nala, else apt with extra options (see bin/zc-apt)
+# apt -> nala where nala does exactly what apt would, else apt with extra
+# options (see bin/zc-apt)
 #
 # An alias to a script rather than a function, so `sudo apt` uses it too.
 # -------------------------------------------------------------------

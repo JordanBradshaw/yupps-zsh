@@ -2,20 +2,70 @@
 # apt wrapper behind the `apt` alias in conf.d/30-aliases.zsh. It is a script,
 # not a function, so `sudo apt ...` runs it too.
 #
-# With nala installed, subcommands nala has go to nala, which downloads in
-# parallel. Everything else runs apt with a few extra options.
+# With nala installed, a command goes to nala (parallel downloads) only when
+# nala can do exactly what apt would:
+#   update                        nala update
+#   install, remove, purge        nala ... --no-autoremove (apt never autoremoves)
+#   full-upgrade, dist-upgrade    nala full-upgrade --no-update --no-autoremove
+#   autoremove, autopurge         nala ...
+#   history, fetch                nala ... (apt has neither)
+# and every option is one both take the same way. Everything else runs apt
+# with a few extra options: `upgrade` (nala has no apt-upgrade mode), search,
+# list, show, clean, local .deb files, pkg/release, -f, --reinstall, ...
 # Bypass with `command apt` or `/usr/bin/apt`.
 
-if command -v nala >/dev/null 2>&1; then
-    case $1 in
-        full-upgrade|dist-upgrade)
-            shift
-            exec nala upgrade "$@"
+# shared ALLOWED ARG...: succeed when nala takes every ARG as apt does.
+# ALLOWED lists the shared options; NAME= takes a value (next word or =value).
+# Local paths and pkg/release are apt-only; URLs work in nala.
+shared() {
+    allowed=" $1 "
+    shift
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --*=*)
+                case $allowed in *" ${1%%=*}= "*) ;; *) return 1 ;; esac
+                ;;
+            -*)
+                case $allowed in
+                    *" $1= "*) [ $# -ge 2 ] || return 1; shift ;;
+                    *" $1 "*) ;;
+                    *) return 1 ;;
+                esac
+                ;;
+            http://*|https://*) ;;
+            */*) return 1 ;;
+        esac
+        shift
+    done
+}
+
+if [ $# -gt 0 ] && command -v nala >/dev/null 2>&1; then
+    cmd=$1
+    shift
+    opts='-o= --option='
+    tx="$opts -y --assume-yes -d --download-only --purge"
+    case $cmd in
+        update)
+            shared "$opts" "$@" && exec nala update "$@"
             ;;
-        install|remove|purge|update|upgrade|autoremove|autopurge|search|list|show|history|clean|fetch)
-            exec nala "$@"
+        install)
+            shared "$tx -t= --target-release= --install-recommends --no-install-recommends" "$@" &&
+                exec nala install --no-autoremove "$@"
+            ;;
+        remove|purge)
+            shared "$tx" "$@" && exec nala "$cmd" --no-autoremove "$@"
+            ;;
+        autoremove|autopurge)
+            shared "$tx" "$@" && exec nala "$cmd" "$@"
+            ;;
+        full-upgrade|dist-upgrade)
+            shared "$tx" "$@" && exec nala full-upgrade --no-update --no-autoremove "$@"
+            ;;
+        history|fetch)
+            exec nala "$cmd" "$@"
             ;;
     esac
+    set -- "$cmd" "$@"
 fi
 
 exec apt -o Acquire::Retries=5 -o APT::Get::Show-Versions=true "$@"
