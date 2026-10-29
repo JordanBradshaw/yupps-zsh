@@ -9,11 +9,20 @@ function run-in-container() {
         return 2
     fi
 
-    local container=$1 pid
+    local container=$1 info pid id
     shift
-    pid=$(command docker inspect -f '{{.State.Pid}}' $container) || return 1
+    info=$(command docker inspect --type container -f '{{.State.Pid}} {{.Id}}' -- $container) ||
+        return 1
+    pid=${info%% *} id=${info#* }
     if [[ $pid != <1-> ]]; then
         print -u2 "run-in-container: $container is not running"
+        return 1
+    fi
+
+    # A remote daemon (DOCKER_HOST, Docker Desktop's VM) reports a PID from
+    # another machine; never enter whatever local process has that PID.
+    if [[ -z $id || ! -r /proc/$pid/cgroup || $(</proc/$pid/cgroup) != *$id* ]]; then
+        print -u2 "run-in-container: PID $pid is not $container's on this host (remote Docker daemon?)"
         return 1
     fi
 
