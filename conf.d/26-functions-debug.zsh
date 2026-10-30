@@ -148,6 +148,39 @@ function kmsg() {
 }
 
 # -------------------------------------------------------------------
+# Processes
+# -------------------------------------------------------------------
+
+##? printenv_pid PID - environment PID was started with, one NAME=value per line (sudo for other users' processes)
+function printenv_pid() {
+    emulate -L zsh
+
+    if (( $# != 1 )) || [[ $1 != <1-> ]]; then
+        print -u2 "usage: printenv_pid PID"
+        return 2
+    fi
+
+    local file=/proc/$1/environ data
+    if [[ ! -e $file ]]; then
+        print -u2 "printenv_pid: no such process: $1"
+        return 1
+    fi
+
+    # Readable only by the owner (and root); NUL-separated.
+    { data=$(<$file) } 2>/dev/null ||
+        if (( EUID )) && (( ${+commands[sudo]} )); then
+            data=$(command sudo cat -- $file) || return 1
+        else
+            print -u2 "printenv_pid: cannot read $file"
+            return 1
+        fi
+
+    local -a vars=(${(0)data})
+    (( $#vars )) && print -rl -- $vars
+    return 0
+}
+
+# -------------------------------------------------------------------
 # Network
 # -------------------------------------------------------------------
 

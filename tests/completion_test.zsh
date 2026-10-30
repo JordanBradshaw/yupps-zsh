@@ -178,6 +178,7 @@ test_setup_registers_repo_functions() {
   assert_eq "$_comps[whichall]" "$_comps[whence]" whichall
   assert_eq "$_comps[zhelp]" "_zhelp" zhelp
   assert_eq "$_comps[run-in-container]" "_zc_run_in_container" run-in-container
+  assert_eq "$_comps[printenv_pid]" "_pids" printenv_pid
 }
 
 test_setup_tree_prefers_eza_completion() {

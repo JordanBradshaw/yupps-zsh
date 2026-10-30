@@ -150,5 +150,58 @@ test_ztrace_traces_without_leaking() {
 }
 
 # ---------------------------------------------------------------------------
+# Processes
+# ---------------------------------------------------------------------------
+
+test_printenv_pid_lists_only_that_process() {
+  load_conf
+  /usr/bin/env -i A=1 'B=two words' /bin/sleep 30 &
+  local pid=$!
+  /bin/sleep 0.2
+  local out=$(printenv_pid $pid)
+  kill $pid
+  assert_eq "$out" $'A=1\nB=two words'
+}
+
+test_printenv_pid_empty_environment() {
+  load_conf
+  /usr/bin/env -i /bin/sleep 30 &
+  local pid=$!
+  /bin/sleep 0.2
+  local out
+  out=$(printenv_pid $pid)
+  local -i rc=$?
+  kill $pid
+  assert_eq $rc 0 "status"
+  assert_eq "$out" ""
+}
+
+# Another user's process: /proc/PID/environ needs root.
+test_printenv_pid_other_user_uses_sudo() {
+  (( EUID )) || return 0
+  load_conf
+  stub_cmd sudo 'echo "$@" > '$SANDBOX'/sudo.log; printf "X=1\0Y=2\0"'
+  assert_eq "$(printenv_pid 1)" $'X=1\nY=2'
+  assert_eq "$(<$SANDBOX/sudo.log)" "cat -- /proc/1/environ"
+}
+
+test_printenv_pid_no_such_process() {
+  load_conf sudo
+  local err
+  err=$(printenv_pid 999999999 2>&1 >/dev/null)
+  assert_eq $? 1 "status"
+  [[ $err == *'no such process: 999999999'* ]] || fail "no error: [$err]"
+}
+
+test_printenv_pid_usage() {
+  load_conf
+  local arg
+  for arg in '' abc -1 '1 2'; do
+    printenv_pid ${=arg} 2>/dev/null
+    assert_eq $? 2 "printenv_pid $arg"
+  done
+}
+
+# ---------------------------------------------------------------------------
 
 run_all

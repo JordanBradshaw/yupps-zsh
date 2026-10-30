@@ -112,6 +112,7 @@ function _zc_completion_setup() {
   compdef _zc_units jfollow
   compdef _zhelp zhelp
   compdef _zc_run_in_container run-in-container
+  compdef _pids printenv_pid
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir
