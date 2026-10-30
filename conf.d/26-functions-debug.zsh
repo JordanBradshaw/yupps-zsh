@@ -219,6 +219,62 @@ function printenv_pid() {
     fi
 }
 
+##? printenv_process [-f] NAME [VAR...] - printenv_pid for the process named NAME (-f: match full command lines); fzf picks if several match
+function printenv_process() {
+    emulate -L zsh
+
+    local mode=-x
+    if [[ $1 == -f ]]; then
+        mode=-f
+        shift
+    fi
+    if (( $# < 1 )); then
+        print -u2 "usage: printenv_process [-f] NAME [VAR...]"
+        return 2
+    fi
+
+    local name=$1 pid choice
+    shift
+    local -a pids=(${(f)"$(command pgrep $mode -- $name)"})
+    if (( ! $#pids )); then
+        print -u2 "printenv_process: no process named $name"
+        return 1
+    fi
+    if (( $#pids == 1 )); then
+        printenv_pid $pids[1] "$@"
+        return
+    fi
+
+    local -a procs=(${(f)"$(command ps -o pid=,user=,args= -p ${(j:,:)pids})"})
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        print -u2 -rl -- $procs
+        print -u2 "printenv_process: $#pids processes match $name; choose one with printenv_pid PID"
+        return 1
+    fi
+
+    if (( ${+commands[fzf]} )); then
+        # The preview runs outside zsh, so it cannot use sudo.
+        local preview="if [ -r /proc/{1}/environ ]; then tr '\\0' '\\n' < /proc/{1}/environ | sort"
+        local bat
+        (( ${+commands[bat]} )) && bat=bat
+        (( ${+commands[batcat]} )) && bat=batcat
+        [[ -n $bat && -z ${NO_COLOR:-} ]] &&
+            preview+=" | $bat --language=dotenv --style=plain --paging=never --color=always"
+        preview+="; else echo '# Another user'\\''s process: select it to read with sudo'; fi"
+        choice=$(print -rl -- $procs | command fzf --header='PID USER COMMAND' \
+            --preview=$preview --preview-window=down,50%,wrap) || return 1
+        pid=${${=choice}[1]}
+    else
+        print -rl -- $procs
+        read -r 'pid?PID: ' || return 1
+    fi
+    if (( ! ${pids[(Ie)$pid]} )); then
+        print -u2 "printenv_process: $pid is not one of the matches"
+        return 1
+    fi
+    printenv_pid $pid "$@"
+}
+
 # -------------------------------------------------------------------
 # Network
 # -------------------------------------------------------------------

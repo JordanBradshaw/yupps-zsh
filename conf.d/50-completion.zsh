@@ -112,6 +112,10 @@ function _zc_printenv_pid() {
   _arguments '1:process:_pids' '*:environment variable:{_zc_env_names $words[2]}'
 }
 
+function _zc_printenv_process() {
+  _arguments '-f[match full command lines]' '1:process name:_process_names' '*: :_nothing'
+}
+
 function _zc_completion_setup() {
   emulate -L zsh
   # compinit hasn't run yet; try again next prompt.
@@ -126,6 +130,7 @@ function _zc_completion_setup() {
   compdef _zhelp zhelp
   compdef _zc_run_in_container run-in-container
   compdef _zc_printenv_pid printenv_pid
+  compdef _zc_printenv_process printenv_process
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir

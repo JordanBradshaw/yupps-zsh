@@ -278,6 +278,109 @@ test_printenv_pid_no_color_skips_bat() {
   [[ $out != bat* ]] || fail "bat used with NO_COLOR: [$out]"
 }
 
+# printenv_process: pgrep is a stub that logs its arguments and prints PIDS.
+stub_pgrep() {
+  stub_cmd pgrep 'echo "$@" > '$SANDBOX'/pgrep.log; [ -n "'"$*"'" ] || exit 1; printf "%s\n" '"$*"
+  stub_cmd ps 'exec /bin/ps "$@"'
+}
+
+test_printenv_process_one_match() {
+  load_conf
+  start_env_proc A=1 B=2
+  stub_pgrep $REPLY
+  local out=$(printenv_process sleep)
+  local vals=$(printenv_process sleep B A)
+  kill $REPLY
+  assert_eq "$out" $'A=1\nB=2'
+  assert_eq "$vals" $'2\n1'
+  assert_eq "$(<$SANDBOX/pgrep.log)" "-x -- sleep"
+}
+
+test_printenv_process_full_command_line() {
+  load_conf
+  start_env_proc A=1
+  stub_pgrep $REPLY
+  local out=$(printenv_process -f 'sleep 30')
+  kill $REPLY
+  assert_eq "$out" "A=1"
+  assert_eq "$(<$SANDBOX/pgrep.log)" "-f -- sleep 30"
+}
+
+test_printenv_process_no_match() {
+  load_conf
+  stub_pgrep
+  local err
+  err=$(printenv_process nope 2>&1 >/dev/null)
+  assert_eq $? 1 "status"
+  [[ $err == *'no process named nope'* ]] || fail "no error: [$err]"
+}
+
+test_printenv_process_usage() {
+  load_conf
+  printenv_process 2>/dev/null
+  assert_eq $? 2 "no args"
+  printenv_process -f 2>/dev/null
+  assert_eq $? 2 "-f only"
+}
+
+# Off a terminal it never guesses: list the matches and fail.
+test_printenv_process_many_piped_lists_matches() {
+  load_conf
+  start_env_proc A=1; local p1=$REPLY
+  start_env_proc A=2; local p2=$REPLY
+  stub_pgrep $p1 $p2
+  local out err
+  err=$(printenv_process sleep 2>&1 >$SANDBOX/out)
+  local -i rc=$?
+  kill $p1 $p2
+  assert_eq $rc 1 "status"
+  assert_eq "$(<$SANDBOX/out)" "" "stdout"
+  [[ $err == *"$p1"*/bin/sleep*"$p2"*/bin/sleep*'printenv_pid PID'* ]] || fail "no list: [$err]"
+}
+
+# fzf stub: log its arguments, pick the line for PID $PICK (exit 130 if unset).
+stub_fzf() {
+  stub_cmd fzf 'printf "%s\n" "$@" > '$SANDBOX'/fzf.log
+[ -n "'"$1"'" ] || exit 130
+while read -r p rest; do [ "$p" = "'"$1"'" ] && echo "$p $rest"; done; exit 0'
+}
+
+test_printenv_process_many_on_tty_picks_with_fzf() {
+  load_conf
+  start_env_proc A=1; local p1=$REPLY
+  start_env_proc A=2; local p2=$REPLY
+  stub_pgrep $p1 $p2
+  stub_fzf $p2
+  local out=$(on_tty "printenv_process sleep")
+  kill $p1 $p2
+  assert_eq "$out" "# PID $p2: /bin/sleep 30
+A=2"
+  [[ $(<$SANDBOX/fzf.log) == *--preview* ]] || fail "no preview: $(<$SANDBOX/fzf.log)"
+}
+
+test_printenv_process_fzf_cancel() {
+  load_conf
+  start_env_proc A=1; local p1=$REPLY
+  start_env_proc A=2; local p2=$REPLY
+  stub_pgrep $p1 $p2
+  stub_fzf
+  local out=$(on_tty "printenv_process sleep; print rc=\$?")
+  kill $p1 $p2
+  assert_eq "$out" "rc=1"
+}
+
+test_printenv_process_prompts_without_fzf() {
+  load_conf
+  start_env_proc A=1; local p1=$REPLY
+  start_env_proc A=2; local p2=$REPLY
+  stub_pgrep $p1 $p2
+  local out=$( { /bin/sleep 0.5; print $p1 } | on_tty "printenv_process sleep")
+  local bad=$( { /bin/sleep 0.5; print 1 } | on_tty "printenv_process sleep; print rc=\$?")
+  kill $p1 $p2
+  [[ $out == *"PID: "*"# PID $p1: /bin/sleep 30"$'\n'"A=1" ]] || fail "no prompt/pick: [$out]"
+  [[ $bad == *"1 is not one of the matches"*"rc=1" ]] || fail "accepted bad PID: [$bad]"
+}
+
 # ---------------------------------------------------------------------------
 
 run_all
