@@ -63,6 +63,25 @@ test_docker_containers_names_with_image() {
   assert_eq "$(<$SANDBOX/docker.log)" "ps --format {{.Names}}:{{.Image}}"
 }
 
+# _zc_env_names PID: a process's variable names, for printenv_pid NAME.
+test_env_names_of_process() {
+  load_conf
+  /usr/bin/env -i B=2 A=1 'C=x=y' /bin/sleep 30 &
+  local pid=$!
+  /bin/sleep 0.2
+  capture_describe
+  _zc_env_names $pid
+  kill $pid
+  assert_eq "${(j:,:)reply}" "B,A,C"
+}
+
+test_env_names_unreadable_process() {
+  load_conf
+  capture_describe
+  _zc_env_names 999999999
+  assert_eq "${#reply}" 0
+}
+
 test_docker_containers_daemon_down() {
   stub_cmd docker 'echo "Cannot connect to the Docker daemon" >&2; exit 1'
   load_conf
@@ -178,7 +197,7 @@ test_setup_registers_repo_functions() {
   assert_eq "$_comps[whichall]" "$_comps[whence]" whichall
   assert_eq "$_comps[zhelp]" "_zhelp" zhelp
   assert_eq "$_comps[run-in-container]" "_zc_run_in_container" run-in-container
-  assert_eq "$_comps[printenv_pid]" "_pids" printenv_pid
+  assert_eq "$_comps[printenv_pid]" "_zc_printenv_pid" printenv_pid
 }
 
 test_setup_tree_prefers_eza_completion() {

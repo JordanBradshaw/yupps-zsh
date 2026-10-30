@@ -7,6 +7,7 @@
 
 typeset -g REPO_DIR=${0:A:h:h}
 typeset -g CONF=$REPO_DIR/conf.d/26-functions-debug.zsh
+typeset -g ZSH_BIN=$(whence -p zsh)
 source $REPO_DIR/tests/lib.zsh
 
 # load_conf TOOL...: stub TOOL..., then source the helpers. The user is in
@@ -196,10 +197,85 @@ test_printenv_pid_no_such_process() {
 test_printenv_pid_usage() {
   load_conf
   local arg
-  for arg in '' abc -1 '1 2'; do
+  for arg in '' abc -1; do
     printenv_pid ${=arg} 2>/dev/null
     assert_eq $? 2 "printenv_pid $arg"
   done
+}
+
+# Start `env -i ARGS... sleep 30` in the background; set $REPLY to its PID.
+start_env_proc() {
+  /usr/bin/env -i "$@" /bin/sleep 30 &
+  REPLY=$!
+  /bin/sleep 0.2
+}
+
+test_printenv_pid_sorted_by_name() {
+  load_conf
+  start_env_proc ZED=3 AB=2 A=1
+  local out=$(printenv_pid $REPLY)
+  kill $REPLY
+  assert_eq "$out" $'A=1\nAB=2\nZED=3'
+}
+
+test_printenv_pid_names_print_values() {
+  load_conf
+  start_env_proc A=1 'B=two words'
+  local out rc
+  out=$(printenv_pid $REPLY B A)
+  rc=$?
+  printenv_pid $REPLY A NOPE >/dev/null
+  local missing=$?
+  kill $REPLY
+  assert_eq "$out" $'two words\n1'
+  assert_eq $rc 0 "status"
+  assert_eq $missing 1 "missing name status"
+}
+
+# on_tty CODE: run zsh CODE with stdout on a terminal, helpers loaded.
+on_tty() {
+  SHELL=/bin/sh /usr/bin/script -qec \
+    "/usr/bin/env -u NO_COLOR $ZSH_BIN -fc 'path=($STUB_BIN); source $CONF; $1'" /dev/null |
+    /usr/bin/tr -d '\r'
+}
+
+test_printenv_pid_tty_colors_with_bat() {
+  load_conf
+  stub_cmd bat 'echo "bat $*"; exec /bin/cat'
+  start_env_proc B=2 A=1
+  local out=$(on_tty "printenv_pid $REPLY")
+  kill $REPLY
+  assert_eq "$out" "bat --language=dotenv --style=plain --paging=never --color=always
+# PID $REPLY: /bin/sleep 30
+A=1
+B=2"
+}
+
+test_printenv_pid_tty_uses_batcat() {
+  load_conf
+  stub_cmd batcat 'echo batcat; exec /bin/cat'
+  start_env_proc A=1
+  local out=$(on_tty "printenv_pid $REPLY")
+  kill $REPLY
+  assert_eq "${${(f)out}[1]}" "batcat"
+}
+
+test_printenv_pid_tty_without_bat_still_has_header() {
+  load_conf
+  start_env_proc A=1
+  local out=$(on_tty "printenv_pid $REPLY")
+  kill $REPLY
+  assert_eq "$out" "# PID $REPLY: /bin/sleep 30
+A=1"
+}
+
+test_printenv_pid_no_color_skips_bat() {
+  load_conf
+  stub_cmd bat 'echo bat; exec /bin/cat'
+  start_env_proc A=1
+  local out=$(on_tty "NO_COLOR=1 printenv_pid $REPLY")
+  kill $REPLY
+  [[ $out != bat* ]] || fail "bat used with NO_COLOR: [$out]"
 }
 
 # ---------------------------------------------------------------------------

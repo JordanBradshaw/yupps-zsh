@@ -151,18 +151,19 @@ function kmsg() {
 # Processes
 # -------------------------------------------------------------------
 
-##? printenv_pid PID - environment PID was started with, one NAME=value per line (sudo for other users' processes)
+##? printenv_pid PID [NAME...] - environment PID was started with, sorted (bat-colored on a terminal); with NAMEs, just their values
 function printenv_pid() {
     emulate -L zsh
 
-    if (( $# != 1 )) || [[ $1 != <1-> ]]; then
-        print -u2 "usage: printenv_pid PID"
+    if (( $# < 1 )) || [[ $1 != <1-> ]]; then
+        print -u2 "usage: printenv_pid PID [NAME...]"
         return 2
     fi
 
-    local file=/proc/$1/environ data
+    local pid=$1 file=/proc/$1/environ data
+    shift
     if [[ ! -e $file ]]; then
-        print -u2 "printenv_pid: no such process: $1"
+        print -u2 "printenv_pid: no such process: $pid"
         return 1
     fi
 
@@ -176,8 +177,46 @@ function printenv_pid() {
         fi
 
     local -a vars=(${(0)data})
-    (( $#vars )) && print -rl -- $vars
-    return 0
+
+    # Like printenv NAME: values only; status 1 if any NAME is unset. The
+    # first entry wins, as for getenv.
+    if (( $# )); then
+        local name entry
+        integer missing=0
+        for name in "$@"; do
+            entry=${vars[(r)${(b)name}=*]}
+            if [[ -n $entry ]]; then
+                print -r -- ${entry#*=}
+            else
+                missing=1
+            fi
+        done
+        return missing
+    fi
+
+    vars=(${(o)vars})
+    if [[ ! -t 1 ]]; then
+        (( $#vars )) && print -rl -- $vars
+        return 0
+    fi
+
+    # On a terminal: the command line as a header comment, then colors.
+    local cmdline
+    { cmdline=${(j: :)${(0)"$(</proc/$pid/cmdline)"}} } 2>/dev/null
+    [[ -n $cmdline ]] || { cmdline="[$(</proc/$pid/comm)]" } 2>/dev/null
+    local -a lines=("# PID $pid: $cmdline" $vars)
+
+    local bat
+    if [[ -z ${NO_COLOR:-} ]]; then
+        (( ${+commands[bat]} )) && bat=bat
+        (( ${+commands[batcat]} )) && bat=batcat
+    fi
+    if [[ -n $bat ]]; then
+        print -rl -- $lines |
+            command $bat --language=dotenv --style=plain --paging=never --color=always
+    else
+        print -rl -- $lines
+    fi
 }
 
 # -------------------------------------------------------------------

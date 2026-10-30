@@ -99,6 +99,19 @@ function _zc_run_in_container() {
   _arguments '1:container:_zc_docker_containers' '*:::command:_normal'
 }
 
+# Variable names in a process's environment (empty if unreadable).
+function _zc_env_names() {
+  local data
+  local -a names
+  { data=$(</proc/$1/environ) } 2>/dev/null
+  names=(${(u)${${(0)data}%%=*}//:/\\:})
+  _describe -t names 'environment variable' names
+}
+
+function _zc_printenv_pid() {
+  _arguments '1:process:_pids' '*:environment variable:{_zc_env_names $words[2]}'
+}
+
 function _zc_completion_setup() {
   emulate -L zsh
   # compinit hasn't run yet; try again next prompt.
@@ -112,7 +125,7 @@ function _zc_completion_setup() {
   compdef _zc_units jfollow
   compdef _zhelp zhelp
   compdef _zc_run_in_container run-in-container
-  compdef _pids printenv_pid
+  compdef _zc_printenv_pid printenv_pid
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir
