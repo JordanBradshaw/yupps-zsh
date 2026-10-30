@@ -18,7 +18,7 @@ load_conf() {
   source $CONF
 }
 
-typeset -g EZA='eza --long --group-directories-first --icons=always --color=always --git --smart-group --time-style=long-iso'
+typeset -g EZA='eza --group-directories-first --icons=always --color=always --git --smart-group --time-style=long-iso --octal-permissions'
 typeset -g LSD='lsd --long --group-dirs first --icon always'
 
 # ---------------------------------------------------------------------------
@@ -27,7 +27,19 @@ typeset -g LSD='lsd --long --group-dirs first --icon always'
 
 test_ls_prefers_eza() {
   load_conf eza lsd
-  assert_eq "$(ls -la foo)" "$EZA -a foo"
+  assert_eq "$(ls -la foo)" "$EZA --long -a foo"
+}
+
+# Long view only on request: plain ls is a grid.
+test_ls_eza_plain_is_grid() {
+  load_conf eza
+  assert_eq "$(ls foo)" "$EZA foo"
+}
+
+test_ls_eza_long_flag() {
+  load_conf eza
+  assert_eq "$(ls -l foo)" "$EZA --long foo"
+  assert_eq "$(ls -al foo)" "$EZA -a --long foo"
 }
 
 test_ls_uses_lsd_without_eza() {
@@ -42,14 +54,14 @@ test_ls_plain_without_eza_or_lsd() {
 
 test_ls_eza_drops_human_flag() {
   load_conf eza
-  assert_eq "$(ls -lh)" "$EZA ."
+  assert_eq "$(ls -lh)" "$EZA --long ."
 }
 
 test_ls_eza_time_sort() {
   load_conf eza
   # eza's modified sort is oldest first; ls -t is newest first.
-  assert_eq "$(ls -lt)" "$EZA --sort=modified --reverse ." "-t"
-  assert_eq "$(ls -ltr)" "$EZA --sort=modified ." "-tr"
+  assert_eq "$(ls -lt)" "$EZA --sort=modified --reverse --long ." "-t"
+  assert_eq "$(ls -ltr)" "$EZA --sort=modified --long ." "-tr"
 }
 
 test_ls_eza_size_sort() {
@@ -67,7 +79,7 @@ test_ls_eza_unsorted() {
 test_lspath_keeps_path_order_with_eza() {
   load_conf eza
   source $REPO_DIR/conf.d/26-functions-ls.zsh
-  assert_eq "$(lspath /a/b)" "$EZA --sort=none -d -- / /a /a/b"
+  assert_eq "$(lspath /a/b)" "$EZA --sort=none --long -d -- / /a /a/b"
 }
 
 test_ls_eza_reverse_alone() {
@@ -107,7 +119,7 @@ test_ls_eza_no_git_passes_through() {
 
 test_ll_eza_full_view() {
   load_conf eza lsd
-  assert_eq "$(ll src)" "$EZA --header --octal-permissions --total-size -a src"
+  assert_eq "$(ll src)" "$EZA --long --header --total-size -a src"
 }
 
 test_ll_without_eza_uses_ls_wrapper() {
@@ -133,7 +145,7 @@ test_ls_eza_bare_does_not_read_stdin() {
 
 test_ll_eza_bare_lists_current_dir() {
   load_conf eza
-  assert_eq "$(print foo | ll)" "$EZA --header --octal-permissions --total-size -a ."
+  assert_eq "$(print foo | ll)" "$EZA --long --header --total-size -a ."
 }
 
 test_tree_eza_bare_lists_current_dir() {

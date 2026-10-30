@@ -68,7 +68,8 @@ function _zc_ls_eza_args() {
                     flag=$arg[i]
                     case $flag in
                         [aAdRiF1]) reply+=(-$flag) ;;
-                        [lh]) ;;
+                        l) reply+=(--long) ;;
+                        h) ;;
                         r) (( reverse ^= 1 )) ;;
                         t) sort=time ;;
                         S) sort=size ;;
@@ -156,7 +157,7 @@ if (( ${+commands[eza]} || ${+commands[lsd]} )); then
 
         if (( ${+commands[eza]} )) && _zc_ls_eza_args -a "$@"; then
             # --total-size walks every subfolder, so it is slow in big trees.
-            command $_zc_eza_ls --header --octal-permissions --total-size "${reply[@]}"
+            command $_zc_eza_ls --long --header --total-size "${reply[@]}"
         else
             ls -la "$@"
         fi
