@@ -11,5 +11,4 @@ function touchf() {
     if [[ -n "$1" ]] && [[ ! -f "$1" ]]; then
       mkdir -p "$1:h" && touch "$1"
     fi
-
 }
