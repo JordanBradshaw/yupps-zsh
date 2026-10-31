@@ -109,6 +109,83 @@ test_netinfo() {
   [[ $out == *"resolvectl dns"* ]] || fail "no dns: $out"
 }
 
+# netdrops fixtures: /sys/class/net statistics, /proc/net/udp{,6} and an
+# nstat whose counters grow between the two snapshots.
+netdrops_fixture() {
+  export NETDROPS_SYS=$SANDBOX/sys NETDROPS_PROC=$SANDBOX/proc
+  local d
+  for d in eth0 lo; do
+    /bin/mkdir -p $NETDROPS_SYS/$d/statistics
+    print 0 >| $NETDROPS_SYS/$d/statistics/rx_dropped
+    print 0 >| $NETDROPS_SYS/$d/statistics/tx_dropped
+    print 0 >| $NETDROPS_SYS/$d/statistics/rx_errors
+    print 0 >| $NETDROPS_SYS/$d/statistics/tx_errors
+  done
+  print 42 >| $NETDROPS_SYS/eth0/statistics/rx_dropped
+  /bin/mkdir -p $NETDROPS_PROC
+  print -l \
+    '   sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops' \
+    '  1: 0100007F:0035 00000000:0000 07 00000000:00000000 00:00000000 00000000     0        0 111 2 0000000000000000 0' \
+    '  2: 00000000:3840 00000000:0000 07 00000000:00000000 00:00000000 00000000  1000        0 222 2 0000000000000000 17' \
+    >| $NETDROPS_PROC/udp
+  print -l \
+    '  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops' \
+    '  3: 00000000000000000000000000000000:3841 00000000000000000000000000000000:0000 07 00000000:00000000 00:00000000 00000000  1000        0 333 2 0000000000000000 5' \
+    '  4: 000080FE00000000FF20541A4E0F56FE:0035 00000000000000000000000000000000:0000 07 00000000:00000000 00:00000000 00000000  1000        0 444 2 0000000000000000 2' \
+    >| $NETDROPS_PROC/udp6
+  stub_cmd nstat "echo \"nstat \$*\" >> $SANDBOX/calls
+n=\$(/bin/cat $SANDBOX/n 2>/dev/null || echo 0); echo \$((n + 1)) > $SANDBOX/n
+echo '#kernel'
+echo \"UdpRcvbufErrors \$((10 + n * 7)) 0.0\"
+echo \"TcpRetransSegs \$((100 + n * 3)) 0.0\"
+echo \"IpInReceives \$((5000 + n * 50)) 0.0\"
+echo 'TcpExtListenDrops 9 0.0'"
+  stub_cmd sleep "echo \"sleep \$*\" >> $SANDBOX/calls"
+}
+
+test_netdrops_reports_every_layer() {
+  load_conf
+  netdrops_fixture
+  rehash
+  local out=$(netdrops 3)
+  [[ $out == *"eth0"*"rx_dropped"*"42"* ]] || fail "no interface drops: $out"
+  [[ $out != *"lo "* ]] || fail "clean interface listed: $out"
+  [[ $out == *"0.0.0.0:14400"*"17"* ]] || fail "no udp4 drops: $out"
+  [[ $out == *"[::]:14401"*"5"* ]] || fail "no udp6 drops: $out"
+  [[ $out == *"[fe80:0:0:0:1a54:20ff:fe56:f4e]:53"*"2"* ]] || fail "udp6 address not decoded: $out"
+  [[ $out != *"127.0.0.1:53"* ]] || fail "socket without drops listed: $out"
+  [[ $out == *"UdpRcvbufErrors"*"+7"* ]] || fail "no counter delta: $out"
+  [[ $out == *"TcpRetransSegs"*"+3"* ]] || fail "no retrans delta: $out"
+  [[ $out != *"IpInReceives"* ]] || fail "non-drop counter listed: $out"
+  [[ $out != *"TcpExtListenDrops"* ]] || fail "unchanged counter listed: $out"
+  local -a calls=(${(f)"$(<$SANDBOX/calls)"})
+  (( ${calls[(I)sleep 3]} )) || fail "did not sleep 3s: $calls"
+  (( ${calls[(I)nstat -asz]} )) || fail "nstat must not update its history: $calls"
+}
+
+test_netdrops_trace_uses_bpftrace() {
+  load_conf bpftrace sudo
+  netdrops_fixture
+  rehash
+  local out=$(netdrops -t 2)
+  [[ $out == *"bpftrace"*"tracepoint:skb:kfree_skb"*"ksym(args->location)"* ]] || fail "no bpftrace: $out"
+  [[ $out == *"interval:s:2"* ]] || fail "trace not bounded: $out"
+}
+
+test_netdrops_trace_without_bpftrace() {
+  load_conf
+  netdrops_fixture
+  rehash
+  netdrops -t 1 >/dev/null 2>$SANDBOX/err
+  [[ $(<$SANDBOX/err) == *"bpftrace"* ]] || fail "no notice: $(<$SANDBOX/err)"
+}
+
+test_netdrops_usage() {
+  load_conf
+  netdrops abc 2>/dev/null && fail "accepted abc"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # zsh
 # ---------------------------------------------------------------------------

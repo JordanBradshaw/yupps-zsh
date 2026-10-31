@@ -316,6 +316,94 @@ function dnsq() {
     command dig +short @1.1.1.1 "$1"
 }
 
+##? netdrops [-t] [SECONDS] - where packets are lost: interface drops, UDP sockets with drops, and drop/error counters that rise over SECONDS (default 5); -t also counts kernel drop sites with bpftrace
+function netdrops() {
+    emulate -L zsh
+    setopt extended_glob
+    local -i trace=0
+    [[ $1 == -t ]] && { trace=1; shift }
+    local secs=${1:-5}
+    if [[ $secs != <1-> ]]; then
+        print -u2 "usage: netdrops [-t] [SECONDS]"
+        return 2
+    fi
+    local sys=${NETDROPS_SYS:-/sys/class/net} proc=${NETDROPS_PROC:-/proc/net}
+    local dev stat f line v
+    local -a w
+
+    # Below the stack: the NIC driver and qdisc dropped or rejected these.
+    print -P "%BInterfaces%b (non-zero drops/errors)"
+    for dev in $sys/*(N/); do
+        for stat in rx_dropped tx_dropped rx_errors tx_errors rx_missed_errors rx_fifo_errors; do
+            f=$dev/statistics/$stat
+            [[ -r $f ]] && v=$(<$f) && (( v )) && printf '  %-12s %-18s %s\n' ${dev:t} $stat $v
+        done
+    done
+
+    # Receive buffer full: the app didn't read fast enough. ss -m can't show
+    # UDP memory on kernels without CONFIG_INET_UDP_DIAG; this always works.
+    print -P "\n%BUDP sockets with drops%b"
+    local hex addr port
+    for f in $proc/udp $proc/udp6; do
+        [[ -r $f ]] || continue
+        for line in ${(f)"$(<$f)"}; do
+            w=(${=line})
+            [[ $w[1] == sl ]] && continue
+            (( w[-1] )) || continue
+            hex=${w[2]%:*} port=$(( 16#${w[2]#*:} ))
+            if (( $#hex == 8 )); then
+                addr="$((16#${hex[7,8]})).$((16#${hex[5,6]})).$((16#${hex[3,4]})).$((16#${hex[1,2]}))"
+            elif [[ $hex == 0## ]]; then
+                addr='[::]'
+            else
+                # Four little-endian 32-bit words, as eight 16-bit groups.
+                local -a g=()
+                local -i i
+                for (( i = 1; i <= 32; i += 8 )); do
+                    g+=($(( 16#${hex[i+6,i+7]}${hex[i+4,i+5]} )) $(( 16#${hex[i+2,i+3]}${hex[i,i+1]} )))
+                done
+                addr="[${(L)${(j.:.)${(@)g/(#m)*/$(( [##16] MATCH ))}}}]"
+            fi
+            printf '  %-28s drops %-8s uid %-6s inode %s\n' $addr:$port $w[-1] $w[8] $w[10]
+        done
+    done
+
+    if (( trace && ! ${+commands[bpftrace]} )); then
+        print -u2 "netdrops: -t needs bpftrace"
+        return 1
+    fi
+
+    # Kernel counters; -s keeps nstat's own history (and plain `nstat`) intact.
+    local -A before
+    local name
+    local -i have_nstat=${+commands[nstat]}
+    if (( have_nstat )); then
+        for line in ${(f)"$(command nstat -asz 2>/dev/null)"}; do
+            w=(${=line}); [[ $w[1] == \#* ]] || before[$w[1]]=$w[2]
+        done
+    fi
+
+    # The trace takes the place of the wait. A tracepoint works without
+    # kprobes or BTF (Jetson kernels).
+    if (( trace )); then
+        print -P "\n%BKernel drop sites over ${secs}s%b (kfree_skb)"
+        local -a pre
+        (( EUID )) && (( ${+commands[sudo]} )) && pre=(sudo)
+        command $pre bpftrace -q -e "tracepoint:skb:kfree_skb { @drops[ksym(args->location)] = count(); } interval:s:$secs { exit(); }"
+    else
+        command sleep $secs
+    fi
+
+    if (( have_nstat )); then
+        print -P "\n%BCounters rising over ${secs}s%b (drops, errors, retransmits)"
+        for line in ${(f)"$(command nstat -asz 2>/dev/null)"}; do
+            w=(${=line}); name=$w[1]
+            [[ $name == \#* || ${(L)name} != *(drop|err|retrans|overflow|prune|timeout|fail|collapse|miss)* ]] && continue
+            (( w[2] > ${before[$name]:-0} )) && printf '  %-32s +%s\n' $name $(( w[2] - ${before[$name]:-0} ))
+        done
+    fi
+}
+
 ##? netinfo - interfaces, routes and DNS servers
 function netinfo() {
     print -P "%BInterfaces%b"
