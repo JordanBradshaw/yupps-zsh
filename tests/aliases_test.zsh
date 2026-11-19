@@ -1,12 +1,12 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for the ls/tree/apt wrappers in conf.d/30-aliases.zsh and bin/zc-apt.
+# Tests for the ls/tree/apt wrappers in zshrc.d/30-aliases.zsh and bin/zc-apt.
 # Run: zsh -f tests/aliases_test.zsh
 #
 # PATH holds only stubs, so the real eza/lsd/nala on this machine never run.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/30-aliases.zsh
+typeset -g CONF=$REPO_DIR/zshrc.d/30-aliases.zsh
 typeset -g ZC_APT=$REPO_DIR/bin/zc-apt
 source $REPO_DIR/tests/lib.zsh
 
@@ -78,7 +78,7 @@ test_ls_eza_unsorted() {
 # eza sorts operands by base name; lspath must keep its root-to-leaf order.
 test_lspath_keeps_path_order_with_eza() {
   load_conf eza
-  source $REPO_DIR/conf.d/26-functions-ls.zsh
+  source $REPO_DIR/functions.d/26-functions-ls.zsh
   assert_eq "$(lspath /a/b)" "$EZA --sort=none --long -d -- / /a /a/b"
 }
 
@@ -297,7 +297,7 @@ test_lazyjournal_no_alias_without_lazyjournal() {
 
 test_lj_hosts_reads_ssh_config_and_lazyjournal_config() {
   load_conf lazyjournal
-  source $REPO_DIR/conf.d/50-completion.zsh  # provides _zc_ssh_hosts
+  source $REPO_DIR/zshrc.d/50-completion.zsh  # provides _zc_ssh_hosts
   print -l 'Host nuc' '  User me' 'Host *' >| $HOME/.ssh/config
   /bin/mkdir -p $XDG_CONFIG_HOME/lazyjournal
   print -l 'settings:' '  colorMode: default' 'ssh:' '  hosts:' \

@@ -1,6 +1,6 @@
 # Completion: completions for this plugin's functions, generated completions
 # for tools that don't ship one, and _zc_ssh_hosts (Host names from ssh
-# configs). zstyles are configuration and belong in the user's own config.
+# configs). Completion zstyles are in ../zstyles.d.
 #
 # compdef calls run in a one-shot precmd hook, after ez-compinit's compinit,
 # so `_comps` can be checked to avoid replacing real completions.

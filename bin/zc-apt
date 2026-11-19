@@ -1,5 +1,5 @@
 #!/bin/sh
-# apt wrapper behind the `apt` alias in conf.d/30-aliases.zsh. It is a script,
+# apt wrapper behind the `apt` alias in zshrc.d/30-aliases.zsh. It is a script,
 # not a function, so `sudo apt ...` runs it too.
 #
 # With nala installed, a command goes to nala (parallel downloads) only when

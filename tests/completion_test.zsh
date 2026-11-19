@@ -1,13 +1,13 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for conf.d/50-completion.zsh.
+# Tests for zshrc.d/50-completion.zsh.
 # Run: zsh -f tests/completion_test.zsh
 #
 # Each test runs in a subshell with a temporary HOME, cache dir, PATH stubs and
 # fpath stubs, against a real compinit.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/50-completion.zsh
+typeset -g CONF=$REPO_DIR/zshrc.d/50-completion.zsh
 source $REPO_DIR/tests/lib.zsh
 
 load_conf() {

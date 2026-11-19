@@ -6,11 +6,12 @@
 #   ##? optional extra lines (usage, caveats)
 #   function NAME() {
 #
-# zhelp reads conf.d when it runs, so notes cost nothing at startup.
+# zhelp reads functions.d and zshrc.d when it runs, so notes cost nothing at
+# startup.
 
-typeset -g _zc_help_dir=${${(%):-%x}:A:h}
+typeset -ga _zc_help_dirs=(${${(%):-%x}:A:h:h}/{functions.d,zshrc.d})
 
-##? _zc_help_index - fill _zc_help_summary, _zc_help_notes and _zc_help_where from the notes in $_zc_help_dir
+##? _zc_help_index - fill _zc_help_summary, _zc_help_notes and _zc_help_where from the notes in $_zc_help_dirs
 function _zc_help_index() {
     emulate -L zsh
     setopt extended_glob
@@ -18,7 +19,7 @@ function _zc_help_index() {
     local file line name
     local -a block
     integer n
-    for file in $_zc_help_dir/*.zsh(N); do
+    for file in $^_zc_help_dirs/*.zsh(N); do
         n=0 block=()
         for line in "${(@f)"$(<$file)"}"; do
             (( n++ ))

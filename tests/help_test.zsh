@@ -1,6 +1,6 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for conf.d/27-functions-help.zsh and the ##? note convention.
+# Tests for functions.d/27-functions-help.zsh and the ##? note convention.
 # Run: zsh -f tests/help_test.zsh
 #
 # Notes are consecutive `##? ` comment lines directly above a function
@@ -8,17 +8,17 @@
 # extra help.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/27-functions-help.zsh
+typeset -g CONF=$REPO_DIR/functions.d/27-functions-help.zsh
 source $REPO_DIR/tests/lib.zsh
 
 # load_conf [FILE CONTENT]...: source the help functions and point them at a
 # fixture directory holding the given files.
 load_conf() {
   source $CONF
-  _zc_help_dir=$SANDBOX/notes
-  mkdir -p $_zc_help_dir
+  _zc_help_dirs=($SANDBOX/notes)
+  mkdir -p $SANDBOX/notes
   while (( $# >= 2 )); do
-    print -r -- "$2" >| $_zc_help_dir/$1
+    print -r -- "$2" >| $SANDBOX/notes/$1
     shift 2
   done
 }
@@ -50,7 +50,7 @@ test_index_reads_summary_notes_and_location() {
   _zc_help_index
   assert_eq "$_zc_help_summary[greet]" 'say hello to NAME' summary
   assert_eq "$_zc_help_notes[greet]" $'greet NAME - say hello to NAME\nPrints "hello, NAME".' notes
-  assert_eq "$_zc_help_where[greet]" "$_zc_help_dir/10-a.zsh:4" where
+  assert_eq "$_zc_help_where[greet]" "$SANDBOX/notes/10-a.zsh:4" where
 }
 
 test_index_understands_every_definition_form() {
@@ -59,7 +59,7 @@ test_index_understands_every_definition_form() {
   assert_eq "$_zc_help_summary[bare]" 'no-arguments helper' 'name() form'
   assert_eq "$_zc_help_summary[_private_helper]" 'internal' 'function name { form'
   assert_eq "$_zc_help_summary[indented]" 'defined inside a block' 'indented function name () form'
-  assert_eq "$_zc_help_where[indented]" "$_zc_help_dir/10-a.zsh:15" 'indented line'
+  assert_eq "$_zc_help_where[indented]" "$SANDBOX/notes/10-a.zsh:15" 'indented line'
 }
 
 test_index_ignores_notes_not_directly_above_a_function() {
@@ -83,7 +83,7 @@ test_zhelp_all_includes_private_functions() {
 
 test_zhelp_name_shows_notes_and_location() {
   load_conf 10-a.zsh "$FIXTURE"
-  assert_eq "$(zhelp greet)" $'greet NAME - say hello to NAME\nPrints "hello, NAME".\n\ndefined in '"$_zc_help_dir/10-a.zsh:4"
+  assert_eq "$(zhelp greet)" $'greet NAME - say hello to NAME\nPrints "hello, NAME".\n\ndefined in '"$SANDBOX/notes/10-a.zsh:4"
 }
 
 test_zhelp_unknown_name_fails() {
@@ -99,18 +99,27 @@ test_zhelp_completion_describes_public_functions() {
   assert_eq "$(_zhelp)" $'bare:no-arguments helper\ngreet:say hello to NAME\nindented:defined inside a block'
 }
 
-test_default_dir_is_conf_d() {
+test_default_dirs_are_functions_and_zshrc_d() {
   source $CONF
-  assert_eq "$_zc_help_dir" "$REPO_DIR/conf.d"
+  assert_eq "${(j: :)_zc_help_dirs}" "$REPO_DIR/functions.d $REPO_DIR/zshrc.d"
 }
 
-# Every ##? block in conf.d must sit directly above a function and start with
+# zshrc.d files carry notes too (50-completion.zsh).
+test_default_dirs_find_zshrc_d_notes() {
+  source $CONF
+  _zc_help_index
+  (( ${+_zc_help_notes[_zc_gencomp]} )) || fail "no notes for _zc_gencomp"
+  (( ${+_zc_help_notes[_zc_ssh_hosts]} )) || fail "no notes for _zc_ssh_hosts"
+  (( ${+_zc_help_notes[zhelp]} )) || fail "no notes for zhelp"
+}
+
+# Every ##? block in the plugin's .d dirs must sit directly above a function and start with
 # that function's name, so zhelp and the editor can find it.
-test_every_conf_d_note_names_the_function_below_it() {
+test_every_note_names_the_function_below_it() {
   local file line name
   local -a bad block
   integer n
-  for file in $REPO_DIR/conf.d/*.zsh; do
+  for file in $REPO_DIR/{zshenv.d,functions.d,zshrc.d,zstyles.d}/*.zsh(N); do
     n=0 block=()
     for line in "${(@f)"$(<$file)"}"; do
       (( n++ ))

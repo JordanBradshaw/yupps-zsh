@@ -1,12 +1,12 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for conf.d/26-functions-debug.zsh.
+# Tests for functions.d/26-functions-debug.zsh.
 # Run: zsh -f tests/debug_test.zsh
 #
 # PATH holds only stubs that print their name and arguments.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/26-functions-debug.zsh
+typeset -g CONF=$REPO_DIR/functions.d/26-functions-debug.zsh
 typeset -g ZSH_BIN=$(whence -p zsh)
 source $REPO_DIR/tests/lib.zsh
 

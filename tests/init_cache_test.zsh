@@ -1,13 +1,13 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for conf.d/45-init-cache.zsh: _zc_init_cache caches a tool's init
+# Tests for zshrc.d/45-init-cache.zsh: _zc_init_cache caches a tool's init
 # script (e.g. `zoxide init zsh`) so shells don't run the tool at startup.
 # Run: zsh -f tests/init_cache_test.zsh
 #
 # PATH holds only stubs, so no real tool runs.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/45-init-cache.zsh
+typeset -g CONF=$REPO_DIR/zshrc.d/45-init-cache.zsh
 source $REPO_DIR/tests/lib.zsh
 
 typeset -g INIT_DIR

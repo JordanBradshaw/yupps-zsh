@@ -1,13 +1,13 @@
 #!/usr/bin/env -S zsh -f
 #
-# Tests for conf.d/26-functions-docker.zsh.
+# Tests for functions.d/26-functions-docker.zsh.
 # Run: zsh -f tests/docker_test.zsh
 #
 # PATH holds only stubs. sudo prints one argument per line, so word splitting
 # is visible in the output.
 
 typeset -g REPO_DIR=${0:A:h:h}
-typeset -g CONF=$REPO_DIR/conf.d/26-functions-docker.zsh
+typeset -g CONF=$REPO_DIR/functions.d/26-functions-docker.zsh
 source $REPO_DIR/tests/lib.zsh
 
 # load_conf PID [ID]: docker inspect prints "PID ID" (and logs its arguments),
