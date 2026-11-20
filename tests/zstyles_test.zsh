@@ -98,9 +98,11 @@ test_fzf_tab_previews_defined() {
 test_fzf_flags_only_global() {
   stub_echo fzf
   load_conf
-  local line
-  for line in "${(@f)$(zstyle -L 'fzf-tab*' fzf-flags)}"; do
-    [[ -z $line || $line == "zstyle ':fzf-tab:*' fzf-flags "* ]] || fail "per-context fzf-flags: $line"
+  local listing line
+  listing=$(zstyle -L ':fzf-tab:*' fzf-flags)
+  [[ -n $listing ]] || { fail "no global fzf-flags"; return; }
+  for line in "${(@f)listing}"; do
+    [[ $line == "zstyle ':fzf-tab:*' fzf-flags "* ]] || fail "per-context fzf-flags: $line"
   done
 }
 

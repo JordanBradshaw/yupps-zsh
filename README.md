@@ -20,10 +20,16 @@ after the plugins whose zstyles it sets defaults over (oh-my-zsh's
 `lib/completion.zsh`).
 
 `zshenv.d` is not sourced by the plugin, so that scripts and `zsh -c` get the
-same PATH as interactive shells. Source it from `.zshenv`:
+same PATH as interactive shells. Source it from `.zshenv`, before the
+plugin manager runs (files starting with `~` are skipped here too):
 
 ```zsh
-for f in $YUPPS_DIR/zshenv.d/*.zsh(N); do source $f; done
+() {
+  local f
+  for f in ${YUPPS_DIR:-${ZDOTDIR:-$HOME}/plugins/yupps-zsh}/zshenv.d/*.zsh(N); do
+    [[ ${f:t} == '~'* ]] || source $f
+  done
+}
 ```
 
 Tests: `bash tests/run.sh`.
