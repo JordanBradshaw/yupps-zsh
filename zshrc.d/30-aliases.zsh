@@ -265,9 +265,23 @@ fi
 #
 # Same iproute2 command, just enable color.
 # Very low-risk replacement.
+#
+# Android denies apps netlink sockets ("Cannot bind netlink socket:
+# Permission denied"), so on a rooted Termux ip runs as root through su.
+# The full path, because root's PATH has no Termux bin dir.
 # -------------------------------------------------------------------
 if (( ${+commands[ip]} )); then
-    alias ip="ip -c"
+    if [[ $OSTYPE == linux-android* ]] && (( EUID && ${+commands[su]} )); then
+        unalias ip 2>/dev/null
+        ##? ip [ARGS...] - Termux: colored iproute2 as root through su (Android denies apps netlink)
+        function ip() {
+            emulate -L zsh
+            local -a cmd=(${commands[ip]} -c "$@")
+            command su -c "${(j: :)${(@qq)cmd}}"
+        }
+    else
+        alias ip="ip -c"
+    fi
 fi
 
 

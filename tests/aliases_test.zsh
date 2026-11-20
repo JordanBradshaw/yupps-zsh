@@ -323,5 +323,40 @@ test_lj_debug_logs_to_state_dir() {
 }
 
 # ---------------------------------------------------------------------------
+# ip: color; on Termux as root through su (Android denies apps netlink)
+# ---------------------------------------------------------------------------
+
+# su -c CMD runs CMD with sh, as root's su does.
+stub_su() {
+  stub_cmd su '[ "$1" = -c ] || exit 9; exec /bin/sh -c "$2"'
+}
+
+test_ip_is_color_alias_off_android() {
+  OSTYPE=linux-gnu
+  stub_su
+  load_conf ip
+  assert_eq "$(alias ip)" "ip='ip -c'"
+  (( ${+functions[ip]} )) && fail "ip function defined off Android"
+  return 0
+}
+
+test_ip_runs_through_su_on_termux() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android
+  stub_su
+  load_conf ip
+  (( ${+aliases[ip]} )) && fail "ip alias left on Termux"
+  assert_eq "$(ip a)" "ip -c a"
+  assert_eq "$(ip addr show 'my if')" "ip -c addr show my if"
+  assert_eq "$(ip -br link 'it'\''s')" "ip -c -br link it's"
+}
+
+test_ip_without_su_on_termux_is_color_alias() {
+  OSTYPE=linux-android
+  load_conf ip
+  assert_eq "$(alias ip)" "ip='ip -c'"
+}
+
+# ---------------------------------------------------------------------------
 
 run_all
