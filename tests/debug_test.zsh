@@ -109,6 +109,15 @@ test_netinfo() {
   [[ $out == *"resolvectl dns"* ]] || fail "no dns: $out"
 }
 
+# On Termux netinfo's ip calls go through the su helper (netlink needs root).
+test_netinfo_uses_android_root_helper() {
+  load_conf ip
+  function _zc_android_root() { print -r -- "root: $*" }
+  local out=$(netinfo)
+  [[ $out == *"root: ip -br -c addr"* ]] || fail "addr not as root: $out"
+  [[ $out == *"root: ip -c route"* ]] || fail "route not as root: $out"
+}
+
 # netdrops fixtures: /sys/class/net statistics, /proc/net/udp{,6} and an
 # nstat whose counters grow between the two snapshots.
 netdrops_fixture() {

@@ -406,10 +406,13 @@ function netdrops() {
 
 ##? netinfo - interfaces, routes and DNS servers
 function netinfo() {
+    # Termux: ip needs root for netlink (zshrc.d/30-aliases.zsh).
+    local -a run=(command)
+    (( ${+functions[_zc_android_root]} )) && run=(_zc_android_root)
     print -P "%BInterfaces%b"
-    command ip -br -c addr
+    $run ip -br -c addr
     print -P "\n%BRoutes%b"
-    command ip -c route
+    $run ip -c route
     if (( ${+commands[resolvectl]} )); then
         print -P "\n%BDNS%b"
         command resolvectl dns

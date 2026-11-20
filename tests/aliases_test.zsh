@@ -357,6 +357,63 @@ test_ip_without_su_on_termux_is_color_alias() {
   assert_eq "$(alias ip)" "ip='ip -c'"
 }
 
+# su -c CMD logs CMD, then runs it with sh.
+stub_su_log() {
+  stub_cmd su '[ "$1" = -c ] || exit 9; echo "$2" >> '$SANDBOX'/su.log; exec /bin/sh -c "$2"'
+}
+
+test_tailscale_through_su_with_module_socket() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android
+  stub_su_log
+  load_conf tailscale
+  assert_eq "$(tailscale status --peers 'a b')" \
+    "tailscale --socket=/data/adb/tailscale/tailscaled.sock status --peers a b"
+}
+
+test_tailscale_socket_override() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android YUPPS_TS_SOCKET=/run/ts.sock
+  stub_su_log
+  load_conf tailscale
+  assert_eq "$(tailscale ip -4)" "tailscale --socket=/run/ts.sock ip -4"
+}
+
+# Tab completion runs `tailscale completion __complete ...`; no root needed.
+test_tailscale_completion_skips_su() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android
+  stub_su_log
+  load_conf tailscale
+  assert_eq "$(tailscale completion zsh)" "tailscale completion zsh"
+  [[ ! -e $SANDBOX/su.log ]] || fail "completion went through su"
+}
+
+test_tailscale_untouched_off_android() {
+  OSTYPE=linux-gnu
+  stub_su_log
+  load_conf tailscale
+  (( ! ${+functions[tailscale]} )) || fail "tailscale wrapped off Android"
+  (( ! ${+functions[tsd]} )) || fail "tsd defined off Android"
+}
+
+test_tsd_runs_service_through_su() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android
+  stub_su_log
+  load_conf tailscaled.service
+  assert_eq "$(tsd status peer)" "tailscaled.service status peer"
+  [[ $(<$SANDBOX/su.log) == "'$STUB_BIN/tailscaled.service' 'status' 'peer'" ]] ||
+    fail "su got: $(<$SANDBOX/su.log)"
+}
+
+test_tsd_needs_the_module() {
+  OSTYPE=linux-android
+  stub_su_log
+  load_conf
+  (( ! ${+functions[tsd]} )) || fail "tsd without tailscaled.service"
+}
+
 # ---------------------------------------------------------------------------
 
 run_all

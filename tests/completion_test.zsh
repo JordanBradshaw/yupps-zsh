@@ -177,6 +177,33 @@ EOF"
   assert_eq "$(<$SANDBOX/called)" "called" "autoloaded body runs"
 }
 
+# A bare function body (bat, rustup's cargo) can't be sourced: it would run
+# _arguments at once. It becomes the body of _NAME.
+test_gencomp_bare_body_becomes_function() {
+  stub_cmd foo "cat <<'EOF'
+#compdef foo
+local ret=1
+_arguments '--x[x]' && ret=0
+return ret
+EOF"
+  load_conf
+  _zc_gencomp foo --completion zsh 2>$SANDBOX/err
+  assert_eq "$(<$SANDBOX/err)" "" stderr
+  assert_eq "$_comps[foo]" "_foo"
+  [[ $functions[_foo] == *_arguments* ]] || fail "body not in _foo"
+}
+
+test_gencomp_name_for_other_command() {
+  stub_cmd rustup '[ "$*" = "completions zsh cargo" ] || exit 1
+echo "#compdef cargo"
+echo "_arguments --release"'
+  load_conf
+  _zc_gencomp -n cargo rustup completions zsh cargo
+  [[ -s $XDG_CACHE_HOME/zsh/gencomp/_cargo ]] || fail "cache not named _cargo"
+  assert_eq "$_comps[cargo]" "_cargo"
+  assert_eq "${+_comps[rustup]}" 0 rustup
+}
+
 # ---------------------------------------------------------------------------
 # Post-compinit setup
 # ---------------------------------------------------------------------------
@@ -273,6 +300,70 @@ echo "compdef _tldr_gen tldr"'
   load_conf
   _zc_completion_setup
   assert_eq "$_comps[tldr]" "_tldr_gen"
+}
+
+# stub_gen CMD EXPECTED_ARGS: CMD prints a cobra-style script for itself
+# only when called with EXPECTED_ARGS.
+stub_gen() {
+  stub_cmd $1 "[ \"\$*\" = \"$2\" ] || exit 1
+echo '#compdef $1'
+echo '_$1() { return 0 }'
+echo 'compdef _$1 $1'"
+}
+
+test_setup_generates_new_tool_completions() {
+  stub_gen gh 'completion -s zsh'
+  stub_gen tailscale 'completion zsh'
+  stub_gen rustup 'completions zsh rustup'
+  stub_gen gitleaks 'completion zsh'
+  stub_gen dive 'completion zsh'
+  stub_gen snitch 'completion zsh'
+  stub_gen xfr '--completions zsh'
+  stub_gen trip '--generate zsh'
+  stub_cmd bat '[ "$*" = "--completion zsh" ] || exit 1
+echo "#compdef bat"
+echo "_arguments --plain"'
+  load_conf
+  local t
+  for t in gh tailscale rustup gitleaks dive snitch xfr trip bat; do
+    unset "_comps[$t]"  # the host's own completions may be on fpath
+  done
+  _zc_completion_setup
+  for t in gh tailscale rustup gitleaks dive snitch xfr trip bat; do
+    assert_eq "$_comps[$t]" "_$t" $t
+  done
+}
+
+test_setup_cargo_from_rustup_link() {
+  stub_cmd rustup '[ "$*" = "completions zsh cargo" ] || exit 1
+echo "#compdef cargo"
+echo "_arguments --release"'
+  ln -s rustup $STUB_BIN/cargo
+  load_conf
+  unset '_comps[cargo]' '_comps[rustup]'
+  _zc_completion_setup
+  assert_eq "$_comps[cargo]" "_cargo"
+}
+
+test_setup_skips_cargo_not_from_rustup() {
+  stub_cmd rustup 'echo "$*" >> '$SANDBOX'/rustup.log; exit 1'
+  stub_cmd cargo
+  load_conf
+  unset '_comps[cargo]'
+  _zc_completion_setup
+  [[ $(<$SANDBOX/rustup.log) != *cargo* ]] || fail "asked rustup for cargo"
+  assert_eq "${+_comps[cargo]}" 0
+}
+
+test_setup_gnu_generic_for_new_tools() {
+  local t
+  for t in gping bandwhich rustscan lsoff diskwatch; do stub_cmd $t; done
+  load_conf
+  for t in gping bandwhich rustscan lsoff diskwatch; do unset "_comps[$t]"; done
+  _zc_completion_setup
+  for t in gping bandwhich rustscan lsoff diskwatch; do
+    assert_eq "$_comps[$t]" "_gnu_generic" $t
+  done
 }
 
 test_setup_skips_uninstalled_tools() {

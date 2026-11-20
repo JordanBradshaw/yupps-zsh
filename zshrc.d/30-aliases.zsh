@@ -268,20 +268,54 @@ fi
 #
 # Android denies apps netlink sockets ("Cannot bind netlink socket:
 # Permission denied"), so on a rooted Termux ip runs as root through su.
-# The full path, because root's PATH has no Termux bin dir.
 # -------------------------------------------------------------------
+if [[ $OSTYPE == linux-android* ]] && (( EUID && ${+commands[su]} )); then
+    ##? _zc_android_root CMD [ARGS...] - Termux: run CMD as root through su, each argument quoted
+    ##? CMD is resolved to its full path: root's PATH has no Termux bin dir.
+    function _zc_android_root() {
+        emulate -L zsh
+        local -a cmd=(${commands[$1]:-$1} "${@[2,-1]}")
+        command su -c "${(j: :)${(@qq)cmd}}"
+    }
+fi
+
 if (( ${+commands[ip]} )); then
-    if [[ $OSTYPE == linux-android* ]] && (( EUID && ${+commands[su]} )); then
+    if (( ${+functions[_zc_android_root]} )); then
         unalias ip 2>/dev/null
         ##? ip [ARGS...] - Termux: colored iproute2 as root through su (Android denies apps netlink)
         function ip() {
-            emulate -L zsh
-            local -a cmd=(${commands[ip]} -c "$@")
-            command su -c "${(j: :)${(@qq)cmd}}"
+            _zc_android_root ip -c "$@"
         }
     else
         alias ip="ip -c"
     fi
+fi
+
+
+# -------------------------------------------------------------------
+# tailscale (Termux + Magisk-Tailscaled module)
+#
+# The module's tailscaled runs as root with its socket under /data/adb,
+# which only root can open; set YUPPS_TS_SOCKET for another location.
+# `tailscale completion` needs no daemon, so Tab completion skips su.
+# -------------------------------------------------------------------
+if (( ${+functions[_zc_android_root]} && ${+commands[tailscale]} )); then
+    : ${YUPPS_TS_SOCKET:=/data/adb/tailscale/tailscaled.sock}
+    ##? tailscale [ARGS...] - Termux: tailscale as root through su, on the Magisk module's socket
+    function tailscale() {
+        if [[ $1 == completion ]]; then
+            command tailscale "$@"
+        else
+            _zc_android_root tailscale --socket=$YUPPS_TS_SOCKET "$@"
+        fi
+    }
+fi
+
+if (( ${+functions[_zc_android_root]} && ${+commands[tailscaled.service]} )); then
+    ##? tsd [start|stop|restart|status [summary|peer|exit-node|all]|log [daemon|service]] - Termux: the Magisk module's tailscaled.service as root
+    function tsd() {
+        _zc_android_root tailscaled.service "$@"
+    }
 fi
 
 

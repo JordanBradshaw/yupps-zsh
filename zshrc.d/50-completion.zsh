@@ -44,16 +44,23 @@ function _zc_ssh_hosts() {
   reply=(${(u)reply})
 }
 
-##? _zc_gencomp CMD ARGS... - cache `CMD ARGS` completion output and source it
+##? _zc_gencomp [-n NAME] CMD ARGS... - cache `CMD ARGS` completion output and source it
+##? NAME is the command completed, when it isn't CMD (rustup prints cargo's).
 function _zc_gencomp() {
   emulate -L zsh
+  local name
+  if [[ $1 == -n ]]; then
+    name=$2
+    shift 2
+  fi
+  : ${name:=$1}
   local bin=${commands[$1]}
   [[ -n $bin ]] || return 1
 
   # Not oh-my-zsh's $ZSH_CACHE_DIR/completions: that is on fpath, and these
   # scripts are meant to be sourced, not autoloaded.
   local dir=${XDG_CACHE_HOME:-$HOME/.cache}/zsh/gencomp
-  local cache=$dir/_$1
+  local cache=$dir/_$name
 
   if [[ ! -s $cache || $bin -nt $cache ]]; then
     [[ -d $dir ]] || mkdir -p $dir
@@ -65,14 +72,24 @@ function _zc_gencomp() {
   fi
 
   [[ -s $cache ]] || return 1
+  local script=$(<$cache) body
+  # A bare function body (bat, rustup's cargo script) runs _arguments at
+  # once when sourced; it only works as the body of _<name>. The #compdef
+  # header doesn't count as a compdef call.
+  body=${script#\#compdef*$'\n'}
+  if [[ $body != *compdef* && $body != *funcstack* ]]; then
+    functions[_$name]=$script
+    compdef _$name $name
+    return
+  fi
   # eval, not source: shtab scripts (tldr) only register via compdef when
   # $zsh_eval_context ends in eval.
-  eval "$(<$cache)"
+  eval "$script"
 
   # Autoload-style scripts (older cobra, e.g. depot) define _<cmd> but never
   # call compdef.
-  if (( ! ${+_comps[$1]} && ${+functions[_$1]} )); then
-    compdef _$1 $1
+  if (( ! ${+_comps[$name]} && ${+functions[_$name]} )); then
+    compdef _$name $name
   fi
 }
 
@@ -160,16 +177,30 @@ function _zc_completion_setup() {
     'just --completions zsh' \
     'kubectl completion zsh' \
     'helm completion zsh' \
-    'tldr --print-completion zsh'; do
+    'tldr --print-completion zsh' \
+    'gh completion -s zsh' \
+    'tailscale completion zsh' \
+    'rustup completions zsh rustup' \
+    'bat --completion zsh' \
+    'gitleaks completion zsh' \
+    'dive completion zsh' \
+    'snitch completion zsh' \
+    'xfr --completions zsh' \
+    'trip --generate zsh'; do
     cmd=(${=gen})
     if (( ${+commands[$cmd[1]]} && ! ${+_comps[$cmd[1]]} )); then
       _zc_gencomp $cmd
     fi
   done
 
+  # rustup's cargo is a link to rustup, which prints cargo's completion.
+  if [[ ${commands[cargo]:A:t} == rustup ]] && (( ! ${+_comps[cargo]} )); then
+    _zc_gencomp -n cargo rustup completions zsh cargo
+  fi
+
   # Everything else: options parsed from --help
   local tool
-  for tool in duf btm micro eget lazydocker mlr; do
+  for tool in duf btm micro eget lazydocker mlr gping bandwhich rustscan lsoff diskwatch; do
     if (( ${+commands[$tool]} && ! ${+_comps[$tool]} )); then
       compdef _gnu_generic $tool
     fi
