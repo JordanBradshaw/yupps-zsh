@@ -433,5 +433,66 @@ test_tsd_needs_the_module() {
 }
 
 # ---------------------------------------------------------------------------
+# htop: the plugin's layout through HTOPRC; btm only stands in without htop
+# ---------------------------------------------------------------------------
+
+load_htop() {
+  unset HTOPRC
+  export XDG_STATE_HOME=$SANDBOX/state
+  load_conf btm
+  stub_cmd htop 'echo "htop rc=$HTOPRC $*"'
+  rehash
+  source $CONF
+}
+
+typeset -g HTOP_RC='$SANDBOX/state/htop/htoprc'
+
+test_htop_uses_shipped_layout() {
+  load_htop
+  assert_eq "$(htop -d 10)" "htop rc=$SANDBOX/state/htop/htoprc -d 10"
+  assert_eq "$(<$SANDBOX/state/htop/htoprc)" "$(<$REPO_DIR/share/htop/htoprc)" copy
+}
+
+test_htop_respects_htoprc() {
+  load_htop
+  assert_eq "$(HTOPRC=/mine htop)" "htop rc=/mine "
+  [[ ! -e $SANDBOX/state/htop ]] || fail "copied the layout"
+}
+
+# Settings changed inside htop (it rewrites the copy) are kept...
+test_htop_keeps_changes_made_in_htop() {
+  load_htop
+  htop >/dev/null
+  print mine >| $SANDBOX/state/htop/htoprc
+  htop >/dev/null
+  assert_eq "$(<$SANDBOX/state/htop/htoprc)" mine
+}
+
+# ...until the shipped layout changes.
+test_htop_refreshes_when_layout_changes() {
+  load_htop
+  htop >/dev/null
+  print mine >| $SANDBOX/state/htop/htoprc
+  print new >| $SANDBOX/layout
+  /usr/bin/touch -d '+1 minute' $SANDBOX/layout
+  _zc_htoprc_src=$SANDBOX/layout
+  htop >/dev/null
+  assert_eq "$(<$SANDBOX/state/htop/htoprc)" new
+}
+
+test_shipped_layout_shows_command_names() {
+  local rc=$REPO_DIR/share/htop/htoprc
+  [[ -n ${(M)${(f)"$(<$rc)"}:#screen:Main=* Command} ]] || fail "Main screen has no Command column"
+  [[ -n ${(M)${(f)"$(<$rc)"}:#hide_userland_threads=1} ]] || fail "thread rows shown"
+  [[ -n ${(M)${(f)"$(<$rc)"}:#show_program_path=0} ]] || fail "full paths shown"
+}
+
+test_htop_falls_back_to_btm() {
+  load_conf btm
+  assert_eq "$(htop)" "btm"
+  assert_eq "$(htop --basic)" "btm --basic"
+}
+
+# ---------------------------------------------------------------------------
 
 run_all

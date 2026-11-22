@@ -467,20 +467,36 @@ fi
 
 
 # -------------------------------------------------------------------
-# htop -> btm
+# htop
 #
-# btm is not CLI-compatible with htop.
-# Bare `htop` gets btm; arguments go to actual htop.
+# htop has no flags for its columns, so the layout ships here
+# (share/htop/htoprc: PID USER ... TIME+ Command, no thread rows, tree
+# sorted by CPU) and htop reads it through HTOPRC on every machine. htop
+# rewrites that file when settings change in it, so it runs on a copy in the
+# state dir: changes made in htop stay until the shipped layout changes. An
+# HTOPRC already set wins. btm stands in where htop is missing.
 # -------------------------------------------------------------------
-if (( ${+commands[btm]} )); then
+typeset -g _zc_htoprc_src=${${(%):-%x}:A:h:h}/share/htop/htoprc
+if (( ${+commands[htop]} )); then
+    unalias htop 2>/dev/null
+    ##? htop [ARGS...] - htop with the plugin's layout (share/htop/htoprc); set HTOPRC to use your own
+    function htop() {
+        emulate -L zsh
+        if [[ -n $HTOPRC || ! -r $_zc_htoprc_src ]]; then
+            command htop "$@"
+            return
+        fi
+        local rc=${XDG_STATE_HOME:-$HOME/.local/state}/htop/htoprc
+        if [[ ! -s $rc || $_zc_htoprc_src -nt $rc ]]; then
+            zmodload -F zsh/files b:zf_mkdir
+            zf_mkdir -p ${rc:h} &&
+                print -r -- "$(<$_zc_htoprc_src)" >| $rc || { command htop "$@"; return }
+        fi
+        HTOPRC=$rc command htop "$@"
+    }
+elif (( ${+commands[btm]} )); then
     unalias htop 2>/dev/null
     function htop() {
-        if (( $# == 0 )); then
-            command btm
-        elif (( ${+commands[htop]} )); then
-            command htop "$@"
-        else
-            command btm "$@"
-        fi
+        command btm "$@"
     }
 fi
