@@ -133,6 +133,16 @@ function _zc_printenv_process() {
   _arguments '-f[match full command lines]' '1:process name:_process_names' '*: :_nothing'
 }
 
+function _zc_ssh_browser() {
+  _arguments -S \
+    '-p[local SOCKS port]:port' \
+    '-d[browser profile dir]:directory:_directories' \
+    '-b[browser]:browser:_command_names -e' \
+    '-k[close the tunnel on the port]' \
+    '1:host:_ssh_hosts' \
+    '*:ssh argument:_files'
+}
+
 function _zc_completion_setup() {
   emulate -L zsh
   # compinit hasn't run yet; try again next prompt.
@@ -148,6 +158,7 @@ function _zc_completion_setup() {
   compdef _zc_run_in_container run-in-container
   compdef _zc_printenv_pid printenv_pid
   compdef _zc_printenv_process printenv_process
+  compdef _zc_ssh_browser ssh-browser
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir

@@ -316,6 +316,76 @@ function dnsq() {
     command dig +short @1.1.1.1 "$1"
 }
 
+##? ssh-browser [-p PORT] [-d DIR] [-b BROWSER] [user@]HOST [SSH_ARGS...] - browse through HOST: SOCKS tunnel (ssh -D) plus a browser window that uses it; closing the browser closes the tunnel
+##? -p  local SOCKS port (default 1080)
+##? -d  browser profile dir (default /tmp/chromium-ssh-proxy-PORT)
+##? -b  browser (default $SSH_BROWSER, else chromium, google-chrome-stable, google-chrome, brave-browser, chromium-browser)
+##? SSH_ARGS go to ssh before HOST, e.g. `ssh-browser root@10.0.0.5 -i ~/.ssh/key -J jump`.
+##? A tunnel already on PORT is reused and left open. `ssh-browser -k [-p PORT]` closes it.
+function ssh-browser() {
+    emulate -L zsh
+    local -A opts
+    local usage='usage: ssh-browser [-p PORT] [-d DIR] [-b BROWSER] [-k] [user@]HOST [SSH_ARGS...]'
+    zparseopts -D -F -A opts p: d: b: k 2>/dev/null || { print -u2 -r -- $usage; return 2 }
+
+    local port=${opts[-p]:-1080}
+    if [[ $port != <1-65535> ]]; then
+        print -u2 -r -- $usage
+        return 2
+    fi
+    # Control socket: lets later calls find, reuse and close the tunnel.
+    local sock=${XDG_RUNTIME_DIR:-/tmp}/ssh-browser-$port.sock
+
+    if (( ${+opts[-k]} )); then
+        if ! command ssh -S $sock -O check ssh-browser >/dev/null 2>&1; then
+            print -u2 "ssh-browser: no tunnel on port $port"
+            return 1
+        fi
+        command ssh -S $sock -O exit ssh-browser
+        return
+    fi
+
+    if (( ! $# )); then
+        print -u2 -r -- $usage
+        return 2
+    fi
+    local host=$1
+    shift
+
+    local browser=${opts[-b]:-$SSH_BROWSER} b
+    if [[ -z $browser ]]; then
+        # chromium-browser last: on Ubuntu it is a stub for the snap.
+        for b in chromium google-chrome-stable google-chrome brave-browser chromium-browser; do
+            (( ${+commands[$b]} )) && { browser=$b; break }
+        done
+    fi
+    if [[ -z $browser ]] || (( ! ${+commands[$browser]} )); then
+        print -u2 "ssh-browser: no browser found${browser:+: $browser} (set -b or SSH_BROWSER)"
+        return 127
+    fi
+
+    integer owner=0
+    if command ssh -S $sock -O check ssh-browser >/dev/null 2>&1; then
+        print "ssh-browser: reusing the tunnel on 127.0.0.1:$port"
+    else
+        command ssh -fN -M -S $sock -o ExitOnForwardFailure=yes \
+            -D 127.0.0.1:$port "$@" $host || {
+            print -u2 "ssh-browser: tunnel to $host failed"
+            return 1
+        }
+        owner=1
+        print "ssh-browser: SOCKS on 127.0.0.1:$port via $host; close the browser to close it"
+    fi
+
+    local dir=${opts[-d]:-/tmp/chromium-ssh-proxy-$port}
+    {
+        command $browser --user-data-dir=$dir \
+            --proxy-server=socks5://127.0.0.1:$port \
+            --no-first-run --new-window
+        (( owner )) && command ssh -S $sock -O exit ssh-browser
+    } </dev/null >/dev/null 2>&1 &!
+}
+
 ##? netdrops [-t] [SECONDS] - where packets are lost: interface drops, UDP sockets with drops, and drop/error counters that rise over SECONDS (default 5); -t also counts kernel drop sites with bpftrace
 function netdrops() {
     emulate -L zsh

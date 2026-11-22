@@ -226,6 +226,7 @@ test_setup_registers_repo_functions() {
   assert_eq "$_comps[run-in-container]" "_zc_run_in_container" run-in-container
   assert_eq "$_comps[printenv_pid]" "_zc_printenv_pid" printenv_pid
   assert_eq "$_comps[printenv_process]" "_zc_printenv_process" printenv_process
+  assert_eq "$_comps[ssh-browser]" "_zc_ssh_browser" ssh-browser
 }
 
 test_setup_tree_prefers_eza_completion() {

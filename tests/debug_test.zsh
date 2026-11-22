@@ -118,6 +118,127 @@ test_netinfo_uses_android_root_helper() {
   [[ $out == *"root: ip -c route"* ]] || fail "route not as root: $out"
 }
 
+# ssh-browser: stub ssh logs its arguments; `-O check` succeeds only when
+# $SANDBOX/up exists (a tunnel already running). Browsers log theirs.
+stub_ssh_browser() {
+  stub_cmd ssh 'echo "$*" >> '$SANDBOX'/ssh.log
+case " $* " in
+  *" -O check "*) [ -e '$SANDBOX'/up ] ;;
+  *" -fN "*) [ ! -e '$SANDBOX'/ssh-fails ] ;;
+esac'
+  local b
+  for b in "$@"; do
+    stub_cmd $b "echo \"$b \$*\" >> $SANDBOX/browser.log"
+  done
+  export XDG_RUNTIME_DIR=$SANDBOX
+}
+
+# wait_line FILE PATTERN: wait up to 2s for a line of FILE matching PATTERN.
+wait_line() {
+  zmodload zsh/zselect
+  integer i
+  for (( i = 0; i < 100; i++ )); do
+    [[ -r $1 && -n ${(M)${(f)"$(<$1)"}:#$~2} ]] && return 0
+    zselect -t 2
+  done
+  return 1
+}
+
+test_ssh_browser_tunnel_then_browser_then_close() {
+  stub_ssh_browser google-chrome-stable
+  load_conf
+  ssh-browser root@10.0.0.5 -i key >/dev/null || fail "failed"
+  local sock=$SANDBOX/ssh-browser-1080.sock
+  assert_eq "${${(f)"$(<$SANDBOX/ssh.log)"}[2]}" \
+    "-fN -M -S $sock -o ExitOnForwardFailure=yes -D 127.0.0.1:1080 -i key root@10.0.0.5" tunnel
+  wait_line $SANDBOX/browser.log '*' || fail "browser not started"
+  assert_eq "$(<$SANDBOX/browser.log)" \
+    "google-chrome-stable --user-data-dir=/tmp/chromium-ssh-proxy-1080 --proxy-server=socks5://127.0.0.1:1080 --no-first-run --new-window" browser
+  wait_line $SANDBOX/ssh.log "-S $sock -O exit *" || fail "tunnel not closed after the browser"
+}
+
+test_ssh_browser_port_dir_and_browser_options() {
+  stub_ssh_browser brave-browser google-chrome-stable
+  load_conf
+  ssh-browser -p 9050 -d /tmp/prof -b brave-browser me@host >/dev/null || fail "failed"
+  [[ $(<$SANDBOX/ssh.log) == *"-D 127.0.0.1:9050 me@host"* ]] || fail "ssh: $(<$SANDBOX/ssh.log)"
+  wait_line $SANDBOX/browser.log '*' || fail "browser not started"
+  assert_eq "$(<$SANDBOX/browser.log)" \
+    "brave-browser --user-data-dir=/tmp/prof --proxy-server=socks5://127.0.0.1:9050 --no-first-run --new-window"
+}
+
+test_ssh_browser_prefers_chromium() {
+  stub_ssh_browser google-chrome-stable chromium
+  load_conf
+  ssh-browser host >/dev/null
+  wait_line $SANDBOX/browser.log '*' || fail "browser not started"
+  [[ $(<$SANDBOX/browser.log) == chromium\ * ]] || fail "got: $(<$SANDBOX/browser.log)"
+}
+
+test_ssh_browser_env_browser() {
+  stub_ssh_browser chromium vivaldi
+  SSH_BROWSER=vivaldi
+  load_conf
+  ssh-browser host >/dev/null
+  wait_line $SANDBOX/browser.log '*' || fail "browser not started"
+  [[ $(<$SANDBOX/browser.log) == vivaldi\ * ]] || fail "got: $(<$SANDBOX/browser.log)"
+}
+
+test_ssh_browser_no_browser_when_tunnel_fails() {
+  stub_ssh_browser chromium
+  touch $SANDBOX/ssh-fails
+  load_conf
+  ssh-browser host >/dev/null 2>&1 && fail "succeeded without a tunnel"
+  [[ ! -e $SANDBOX/browser.log ]] || fail "browser started"
+  return 0
+}
+
+# A tunnel already on the port (an earlier ssh-browser) is reused; only its
+# owner closes it.
+test_ssh_browser_reuses_running_tunnel() {
+  stub_ssh_browser chromium
+  touch $SANDBOX/up
+  load_conf
+  ssh-browser host >/dev/null || fail "failed"
+  wait_line $SANDBOX/browser.log '*' || fail "browser not started"
+  [[ $(<$SANDBOX/ssh.log) != *-fN* ]] || fail "second tunnel started"
+  zselect -t 20
+  [[ $(<$SANDBOX/ssh.log) != *"-O exit"* ]] || fail "closed a tunnel it doesn't own"
+  return 0
+}
+
+test_ssh_browser_kill_closes_tunnel() {
+  stub_ssh_browser chromium
+  touch $SANDBOX/up
+  load_conf
+  ssh-browser -k -p 9050 >/dev/null || fail "failed"
+  [[ $(<$SANDBOX/ssh.log) == *"-S $SANDBOX/ssh-browser-9050.sock -O exit"* ]] || fail "ssh: $(<$SANDBOX/ssh.log)"
+}
+
+test_ssh_browser_kill_without_tunnel() {
+  stub_ssh_browser chromium
+  load_conf
+  ssh-browser -k 2>/dev/null && fail "succeeded without a tunnel"
+  [[ $(<$SANDBOX/ssh.log) != *"-O exit"* ]] || fail "sent exit"
+  return 0
+}
+
+test_ssh_browser_usage_errors() {
+  stub_ssh_browser chromium
+  load_conf
+  ssh-browser 2>/dev/null; assert_eq $? 2 "no host"
+  ssh-browser -p 99999 host 2>/dev/null; assert_eq $? 2 "bad port"
+  ssh-browser -x host 2>/dev/null; assert_eq $? 2 "unknown option"
+  [[ ! -e $SANDBOX/ssh.log ]] || fail "ran ssh"
+}
+
+test_ssh_browser_without_browser() {
+  stub_ssh_browser
+  load_conf
+  ssh-browser host 2>/dev/null; assert_eq $? 127
+  [[ ! -e $SANDBOX/ssh.log ]] || fail "ran ssh"
+}
+
 # netdrops fixtures: /sys/class/net statistics, /proc/net/udp{,6} and an
 # nstat whose counters grow between the two snapshots.
 netdrops_fixture() {
