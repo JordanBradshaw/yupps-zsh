@@ -228,6 +228,7 @@ test_setup_registers_repo_functions() {
   assert_eq "$_comps[printenv_process]" "_zc_printenv_process" printenv_process
   assert_eq "$_comps[ssh-browser]" "_zc_ssh_browser" ssh-browser
   assert_eq "$_comps[t]" "_zc_tmux_sessions" t
+  assert_eq "$_comps[tssh]" "_zc_tssh" tssh
 }
 
 test_setup_tree_prefers_eza_completion() {

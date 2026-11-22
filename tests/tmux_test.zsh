@@ -65,4 +65,41 @@ test_t_without_tmux() {
   assert_eq $? 127
 }
 
+# tssh: ssh is a stub logging each argument on its own line.
+stub_ssh_log() {
+  stub_cmd ssh 'for a in "$@"; do echo "$a"; done >> '$SANDBOX'/ssh.log'
+}
+
+ssh_args() { print -r -- "$(<$SANDBOX/ssh.log)" }
+
+typeset -g REMOTE_MAIN="command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s main; exec \"\${SHELL:-sh}\" -l"
+
+test_tssh_attaches_main_on_host() {
+  load_conf
+  stub_ssh_log
+  tssh root@10.0.0.5
+  assert_eq "$(ssh_args)" $'-t\nroot@10.0.0.5\n'"$REMOTE_MAIN"
+}
+
+test_tssh_session_and_ssh_args() {
+  load_conf
+  stub_ssh_log
+  tssh -s 'my work' host -p 2222 -i key
+  assert_eq "$(ssh_args)" $'-t\n-p\n2222\n-i\nkey\nhost\n'"command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s 'my work'; exec \"\${SHELL:-sh}\" -l"
+}
+
+test_tssh_session_from_env() {
+  load_conf
+  stub_ssh_log
+  YUPPS_TMUX_SESSION=dev tssh host
+  [[ $(ssh_args) == *"new-session -A -s dev;"* ]] || fail "got: $(ssh_args)"
+}
+
+test_tssh_needs_host() {
+  load_conf
+  stub_ssh_log
+  tssh 2>/dev/null; assert_eq $? 2
+  [[ ! -e $SANDBOX/ssh.log ]] || fail "ran ssh"
+}
+
 run_all

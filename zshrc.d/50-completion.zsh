@@ -140,6 +140,13 @@ function _zc_tmux_sessions() {
   _describe -t sessions 'tmux session' sessions
 }
 
+function _zc_tssh() {
+  _arguments -S \
+    '-s[tmux session on the host]:session' \
+    '1:host:_ssh_hosts' \
+    '*:ssh argument:_files'
+}
+
 function _zc_ssh_browser() {
   _arguments -S \
     '-p[local SOCKS port]:port' \
@@ -167,6 +174,7 @@ function _zc_completion_setup() {
   compdef _zc_printenv_process printenv_process
   compdef _zc_ssh_browser ssh-browser
   compdef _zc_tmux_sessions t
+  compdef _zc_tssh tssh
   # systemd ships _journalctl only next to a system zsh; zssh bundles lack it.
   (( ${+_comps[journalctl]} )) && compdef sj=journalctl
   compdef _precommand ineachdir
