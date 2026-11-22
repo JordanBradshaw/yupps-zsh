@@ -299,24 +299,40 @@ fi
 # which only root can open; set YUPPS_TS_SOCKET for another location.
 # `tailscale completion` needs no daemon, so Tab completion skips su.
 # -------------------------------------------------------------------
-if (( ${+functions[_zc_android_root]} && ${+commands[tailscale]} )); then
+if (( ${+functions[_zc_android_root]} )); then
+    # Magisk modules link their tools into /system/bin. When a link points
+    # under /data/adb, only root can follow it, so zsh leaves it out of
+    # $commands.
+    : ${YUPPS_ROOT_BIN:=/system/bin}
+    ##? _zc_root_cmd NAME - Termux: set $REPLY to NAME's path, also when only root can run it; fail if there is none
+    function _zc_root_cmd() {
+        REPLY=${commands[$1]}
+        [[ -z $REPLY && -L $YUPPS_ROOT_BIN/$1 ]] && REPLY=$YUPPS_ROOT_BIN/$1
+        [[ -n $REPLY ]]
+    }
+fi
+
+if (( ${+functions[_zc_root_cmd]} )) && _zc_root_cmd tailscale; then
+    typeset -g _zc_ts_bin=$REPLY
     : ${YUPPS_TS_SOCKET:=/data/adb/tailscale/tailscaled.sock}
     ##? tailscale [ARGS...] - Termux: tailscale as root through su, on the Magisk module's socket
     function tailscale() {
-        if [[ $1 == completion ]]; then
-            command tailscale "$@"
+        if [[ $1 == completion && -x $_zc_ts_bin ]]; then
+            command $_zc_ts_bin "$@"
         else
-            _zc_android_root tailscale --socket=$YUPPS_TS_SOCKET "$@"
+            _zc_android_root $_zc_ts_bin --socket=$YUPPS_TS_SOCKET "$@"
         fi
     }
 fi
 
-if (( ${+functions[_zc_android_root]} && ${+commands[tailscaled.service]} )); then
+if (( ${+functions[_zc_root_cmd]} )) && _zc_root_cmd tailscaled.service; then
+    typeset -g _zc_tsd_bin=$REPLY
     ##? tsd [start|stop|restart|status [summary|peer|exit-node|all]|log [daemon|service]] - Termux: the Magisk module's tailscaled.service as root
     function tsd() {
-        _zc_android_root tailscaled.service "$@"
+        _zc_android_root $_zc_tsd_bin "$@"
     }
 fi
+unset REPLY
 
 
 # -------------------------------------------------------------------

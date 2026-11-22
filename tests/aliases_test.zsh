@@ -407,6 +407,24 @@ test_tsd_runs_service_through_su() {
     fail "su got: $(<$SANDBOX/su.log)"
 }
 
+# Magisk links its tools into /system/bin with targets under /data/adb that
+# only root can follow: not in $commands, but still wrapped.
+test_tailscale_root_only_link_is_wrapped() {
+  (( EUID )) || return 0
+  OSTYPE=linux-android YUPPS_ROOT_BIN=$SANDBOX/sysbin
+  mkdir -p $YUPPS_ROOT_BIN
+  ln -s /nonexistent/tailscale $YUPPS_ROOT_BIN/tailscale
+  ln -s /nonexistent/tailscaled.service $YUPPS_ROOT_BIN/tailscaled.service
+  stub_su_log
+  load_conf
+  (( ${+functions[tailscale]} )) || fail "tailscale not wrapped"
+  (( ${+functions[tsd]} )) || fail "tsd not defined"
+  tailscale status >/dev/null 2>&1
+  tsd restart >/dev/null 2>&1
+  assert_eq "$(<$SANDBOX/su.log)" "'$YUPPS_ROOT_BIN/tailscale' '--socket=/data/adb/tailscale/tailscaled.sock' 'status'
+'$YUPPS_ROOT_BIN/tailscaled.service' 'restart'"
+}
+
 test_tsd_needs_the_module() {
   OSTYPE=linux-android
   stub_su_log
